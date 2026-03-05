@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: parcae-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: SEC_IDENTITY
+        value: Tarvorix Tarvorix@users.noreply.github.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: parcae-db
+          property: connectionString
+
+  - type: web
+    name: parcae-dashboard
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_BASE
+        value: https://parcae-api.onrender.com
+
+databases:
+  - name: parcae-db
+    plan: free
+    databaseName: parcae
+    user: parcae
