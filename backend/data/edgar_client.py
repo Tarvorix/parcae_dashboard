@@ -7,6 +7,65 @@ from backend.config import SEC_IDENTITY
 # Required by SEC EDGAR before any request
 set_identity(SEC_IDENTITY)
 
+# ── GAAP concept fallback chains ────────────────────────────────────────────
+# Companies use different GAAP concept names depending on industry and filing
+# conventions.  We try multiple variants for each metric and use the first hit.
+
+_REVENUE_CONCEPTS = [
+    "Revenues",
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "SalesRevenueNet",
+    "RevenueFromContractWithCustomerIncludingAssessedTax",
+    "SalesRevenueServicesNet",
+    "SalesRevenueGoodsNet",
+    "InterestAndDividendIncomeOperating",
+    "RegulatedAndUnregulatedOperatingRevenue",
+    "ElectricUtilityRevenue",
+    "HealthCareOrganizationRevenue",
+    "RealEstateRevenueNet",
+    "FinancialServicesRevenue",
+    "BrokerageCommissionsRevenue",
+    "OilAndGasRevenue",
+    "RevenueFromRelatedParties",
+    "TotalRevenuesAndOtherIncome",
+    "NoninterestIncome",
+    "RevenueNotFromContractWithCustomer",
+    "Revenue",
+]
+
+_NET_INCOME_CONCEPTS = [
+    "NetIncomeLoss",
+    "NetIncomeLossAvailableToCommonStockholdersBasic",
+    "ProfitLoss",
+    "NetIncomeLossAttributableToParent",
+    "IncomeLossFromContinuingOperations",
+    "ComprehensiveIncomeNetOfTax",
+    "IncomeLossFromContinuingOperationsIncludingPortionAttributableToNoncontrollingInterest",
+]
+
+_CFO_CONCEPTS = [
+    "NetCashProvidedByUsedInOperatingActivities",
+    "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+    "CashProvidedByUsedInOperatingActivitiesContinuingOperations",
+    "NetCashProvidedByUsedInOperatingActivitiesOfContinuingOperations",
+]
+
+_CAPEX_CONCEPTS = [
+    "PaymentsToAcquirePropertyPlantAndEquipment",
+    "PaymentsToAcquireProductiveAssets",
+    "PaymentsForCapitalImprovements",
+    "CapitalExpendituresIncurredButNotYetPaid",
+    "PaymentsToAcquireAndDevelopRealEstate",
+    "PaymentsToAcquireMachineryAndEquipment",
+    "PurchaseOfPropertyPlantAndEquipment",
+    "PaymentsForProceedsFromProductiveAssets",
+    "PaymentsToAcquireOtherPropertyPlantAndEquipment",
+]
+
+# Minimum number of annual filings needed for distribution fitting.
+# 3 years provides enough data points (2+ growth rates) for bear/base/bull.
+MIN_YEARS_REQUIRED = 3
+
 
 def _lookup_concept(df: pd.DataFrame, concept_suffix: str, date_col: str) -> Optional[float]:
     """Look up a GAAP concept value from a Statement DataFrame."""
@@ -21,11 +80,21 @@ def _lookup_concept(df: pd.DataFrame, concept_suffix: str, date_col: str) -> Opt
     return float(val)
 
 
+def _lookup_first(df: pd.DataFrame, concepts: list[str], date_col: str) -> Optional[float]:
+    """Try each concept in *concepts* and return the first non-None hit."""
+    for concept in concepts:
+        val = _lookup_concept(df, concept, date_col)
+        if val is not None:
+            return val
+    return None
+
+
 def get_10yr_financials(ticker: str) -> Optional[dict]:
     """
     Pull up to 10 years of annual financials from SEC EDGAR 10-K filings.
     Returns a dict with lists of annual values (oldest -> newest).
-    Returns None if fewer than 5 years of usable data are found.
+    Returns None if fewer than MIN_YEARS_REQUIRED years of usable data are
+    found.
     """
     try:
         company = Company(ticker)
@@ -63,19 +132,17 @@ def get_10yr_financials(ticker: str) -> Optional[dict]:
                     continue
                 cf_primary_date = cf_date_cols[0]
 
-                # Revenue — try multiple GAAP concepts
-                rev = (
-                    _lookup_concept(inc_df, "Revenues", primary_date)
-                    or _lookup_concept(inc_df, "RevenueFromContractWithCustomerExcludingAssessedTax", primary_date)
-                    or _lookup_concept(inc_df, "SalesRevenueNet", primary_date)
-                    or _lookup_concept(inc_df, "RevenueFromContractWithCustomerIncludingAssessedTax", primary_date)
-                )
+                # Revenue — try full fallback chain
+                rev = _lookup_first(inc_df, _REVENUE_CONCEPTS, primary_date)
 
-                ni = _lookup_concept(inc_df, "NetIncomeLoss", primary_date)
+                # Net income — try full fallback chain
+                ni = _lookup_first(inc_df, _NET_INCOME_CONCEPTS, primary_date)
 
-                cfo = _lookup_concept(cf_df, "NetCashProvidedByUsedInOperatingActivities", cf_primary_date)
+                # Operating cash flow — try full fallback chain
+                cfo = _lookup_first(cf_df, _CFO_CONCEPTS, cf_primary_date)
 
-                capex = _lookup_concept(cf_df, "PaymentsToAcquirePropertyPlantAndEquipment", cf_primary_date)
+                # CapEx — try full fallback chain
+                capex = _lookup_first(cf_df, _CAPEX_CONCEPTS, cf_primary_date)
 
                 if rev and ni is not None and cfo is not None and capex is not None:
                     rev_f = float(rev)
@@ -92,7 +159,7 @@ def get_10yr_financials(ticker: str) -> Optional[dict]:
             except Exception:
                 continue
 
-        if len(revenues) < 5:
+        if len(revenues) < MIN_YEARS_REQUIRED:
             return None  # Not enough history for reliable distributions
 
         # Filings come newest-first; reverse to chronological order

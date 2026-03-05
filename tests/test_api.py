@@ -247,11 +247,22 @@ class TestAnalyzeTicker:
         r = client.get("/analyze/MISSING")
         assert r.status_code == 404
 
+    @patch("backend.main.build_fallback_edgar_data", return_value=None)
     @patch("backend.main.get_10yr_financials", return_value=None)
     @patch("backend.main.get_fundamentals", return_value=MOCK_YF_DATA)
-    def test_404_when_no_edgar_data(self, _yf, _edgar, client):
+    def test_404_when_no_edgar_and_no_fallback(self, _yf, _edgar, _fallback, client):
         r = client.get("/analyze/NOEDGAR")
         assert r.status_code == 404
+
+    @patch("backend.main.get_10yr_financials", return_value=None)
+    @patch("backend.main.get_fundamentals", return_value=MOCK_YF_DATA)
+    def test_fallback_to_yfinance_when_no_edgar(self, _yf, _edgar, client):
+        """When EDGAR returns None, yfinance fallback should produce a valid analysis."""
+        r = client.get("/analyze/NOEDGAR")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ticker"] == "NOEDGAR"
+        assert "margin_of_safety" in data
 
     @patch("backend.main.get_10yr_financials", return_value=MOCK_EDGAR_DATA)
     @patch("backend.main.get_fundamentals", return_value=MOCK_YF_DATA)

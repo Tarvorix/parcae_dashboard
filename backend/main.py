@@ -28,7 +28,7 @@ from backend.catalyst.particle_filter import (
     PositionCatalystTracker,
 )
 from backend.data.edgar_client import get_10yr_financials
-from backend.data.yfinance_client import get_fundamentals, get_price_history
+from backend.data.yfinance_client import get_fundamentals, get_price_history, build_fallback_edgar_data
 from backend.db.database import get_db, init_db
 from backend.db.models import (
     CatalystObservation,
@@ -138,10 +138,13 @@ async def analyze_ticker(
 
     edgar_data = get_10yr_financials(ticker)
     if not edgar_data:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Insufficient SEC EDGAR history for {ticker} (need ≥ 5 years)"
-        )
+        # Fallback: build synthetic history from yfinance trailing fundamentals
+        edgar_data = build_fallback_edgar_data(yf_data)
+        if not edgar_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Insufficient financial data for {ticker} from SEC EDGAR and Yahoo Finance"
+            )
 
     distributions = build_distributions_from_history(edgar_data, yf_data)
     intrinsic_values = run_dcf_simulation(distributions)

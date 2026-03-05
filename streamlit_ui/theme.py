@@ -87,10 +87,16 @@ def inject_custom_css():
             border-color: #374151;
         }
 
-        /* Hide Streamlit branding */
+        /* Hide Streamlit branding but keep sidebar toggle visible */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: hidden;}
+        header[data-testid="stHeader"] {
+            background-color: transparent;
+        }
+        /* Hide the decoration/branding bar but keep the header interactive
+           so the sidebar collapse/expand button remains accessible */
+        [data-testid="stDecoration"] {display: none;}
+        [data-testid="stToolbar"] {display: none;}
         </style>
         """,
         unsafe_allow_html=True,

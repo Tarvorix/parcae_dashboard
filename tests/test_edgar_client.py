@@ -112,15 +112,27 @@ class TestGet10YrFinancials:
         assert len(unique_lengths) == 1, f"Lists have different lengths: {lengths}"
 
     @patch("backend.data.edgar_client.Company")
-    def test_returns_none_when_fewer_than_5_years(self, mock_company_cls):
+    def test_returns_none_when_fewer_than_min_years(self, mock_company_cls):
         mock_company = MagicMock()
-        # Only 3 usable filings
-        mock_company.get_filings.return_value.head.return_value = make_10_filings()[:3]
+        # Only 2 usable filings — below MIN_YEARS_REQUIRED (3)
+        mock_company.get_filings.return_value.head.return_value = make_10_filings()[:2]
         mock_company_cls.return_value = mock_company
 
         from backend.data.edgar_client import get_10yr_financials
         result = get_10yr_financials("SHORT")
         assert result is None
+
+    @patch("backend.data.edgar_client.Company")
+    def test_returns_data_with_3_years(self, mock_company_cls):
+        mock_company = MagicMock()
+        # 3 usable filings — exactly MIN_YEARS_REQUIRED
+        mock_company.get_filings.return_value.head.return_value = make_10_filings()[:3]
+        mock_company_cls.return_value = mock_company
+
+        from backend.data.edgar_client import get_10yr_financials
+        result = get_10yr_financials("THREE")
+        assert result is not None
+        assert len(result["revenues"]) == 3
 
     @patch("backend.data.edgar_client.Company")
     def test_returns_none_on_company_exception(self, mock_company_cls):
