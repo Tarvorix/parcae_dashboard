@@ -107,6 +107,17 @@ def render_sidebar():
             help="Show scores for all stocks, not just those passing Klarman filters",
         )
 
+        # Result limit
+        result_limit = st.radio(
+            "Results",
+            options=["Top 50", "Top 100", "All"],
+            index=0,
+            key="screener_result_limit",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+        max_results = {"Top 50": 50, "Top 100": 100, "All": 9999}[result_limit]
+
         # Run screener button
         refresh = st.button(
             "Run Screener", key="refresh_screener",
@@ -119,9 +130,9 @@ def render_sidebar():
             spinner_msg = f"Screening {universe_label}… (this takes a few minutes)"
             with st.spinner(spinner_msg):
                 if show_all:
-                    st.session_state.watchlist_data = _run_screener_unfiltered(50, universe)
+                    st.session_state.watchlist_data = _run_screener_unfiltered(max_results, universe)
                 else:
-                    st.session_state.watchlist_data = _run_screener(50, universe)
+                    st.session_state.watchlist_data = _run_screener(max_results, universe)
                 st.session_state._last_universe = universe
                 st.session_state._last_show_all = show_all
             # Clear selected ticker to show screener results on main screen
@@ -137,9 +148,9 @@ def render_sidebar():
                 spinner_msg = f"Screening {universe_label}… (this takes a few minutes)"
                 with st.spinner(spinner_msg):
                     if show_all:
-                        st.session_state.watchlist_data = _run_screener_unfiltered(50, universe)
+                        st.session_state.watchlist_data = _run_screener_unfiltered(max_results, universe)
                     else:
-                        st.session_state.watchlist_data = _run_screener(50, universe)
+                        st.session_state.watchlist_data = _run_screener(max_results, universe)
                     st.session_state._last_universe = universe
                     st.session_state._last_show_all = show_all
 
