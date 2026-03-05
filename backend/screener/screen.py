@@ -97,10 +97,16 @@ def score_candidate(ev_ebit: float, fcf_yield: float, ptb: float) -> float:
 def run_klarman_screen(
     tickers: Optional[list[str]] = None,
     show_progress: bool = True,
+    filter_results: bool = True,
 ) -> pd.DataFrame:
     """
     Run the Klarman screen against the supplied ticker list.
     Defaults to the full S&P 500 if no list is provided.
+
+    When filter_results=True (default), only candidates passing all hard
+    Klarman filters are returned.  When filter_results=False, all stocks
+    with calculable metrics are returned with a 'passes_filter' column
+    indicating whether they meet the hard thresholds.
 
     Returns a DataFrame of candidates ranked by composite screen score,
     best opportunities first.  Returns an empty DataFrame if none qualify.
@@ -122,7 +128,13 @@ def run_klarman_screen(
         ptb = calculate_price_tangible_book(data)
         net_debt_ebitda = calculate_net_debt_ebitda(data)
 
-        if not passes_klarman_filters(data, ev_ebit, fcf_yield, ptb):
+        passes = passes_klarman_filters(data, ev_ebit, fcf_yield, ptb)
+
+        if filter_results and not passes:
+            continue
+
+        # Need all three core metrics to compute a score
+        if ev_ebit is None or fcf_yield is None or ptb is None:
             continue
 
         results.append({
@@ -137,13 +149,14 @@ def run_klarman_screen(
             "sector": data.get("sector"),
             "industry": data.get("industry"),
             "screen_score": round(score_candidate(ev_ebit, fcf_yield, ptb), 6),
+            "passes_filter": passes,
         })
 
     if not results:
         return pd.DataFrame(columns=[
             "ticker", "name", "price", "market_cap", "ev_ebit",
             "fcf_yield_pct", "price_tangible_book", "net_debt_ebitda",
-            "sector", "industry", "screen_score",
+            "sector", "industry", "screen_score", "passes_filter",
         ])
 
     df = pd.DataFrame(results)

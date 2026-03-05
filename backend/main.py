@@ -105,12 +105,18 @@ async def health():
 # ── Screener ──────────────────────────────────────────────────────────────────
 
 @app.get("/watchlist", tags=["Screener"])
-async def get_watchlist(top_n: int = Query(default=50, ge=1, le=500)):
+async def get_watchlist(
+    top_n: int = Query(default=50, ge=1, le=500),
+    filter_results: bool = Query(default=True, description="When False, return all scored stocks with a passes_filter column"),
+):
     """
     Run the full Klarman screen against the S&P 500 and return the top N
     candidates ranked by composite screen score.
+
+    Set filter_results=false to see scores for all stocks regardless of
+    whether they pass the hard Klarman thresholds.
     """
-    df = run_klarman_screen(show_progress=False)
+    df = run_klarman_screen(show_progress=False, filter_results=filter_results)
     if df.empty:
         return []
     return df.head(top_n).to_dict(orient="records")

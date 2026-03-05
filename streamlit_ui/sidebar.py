@@ -10,8 +10,17 @@ from streamlit_ui.theme import COLORS, fmt_dollar
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _run_screener(top_n: int = 50) -> list[dict]:
-    """Run the Klarman screen and cache results for 1 hour."""
-    df = run_klarman_screen(show_progress=False)
+    """Run the Klarman screen (filtered) and cache results for 1 hour."""
+    df = run_klarman_screen(show_progress=False, filter_results=True)
+    if df.empty:
+        return []
+    return df.head(top_n).to_dict(orient="records")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _run_screener_unfiltered(top_n: int = 50) -> list[dict]:
+    """Run the Klarman screen (unfiltered — show all scores) and cache results for 1 hour."""
+    df = run_klarman_screen(show_progress=False, filter_results=False)
     if df.empty:
         return []
     return df.head(top_n).to_dict(orient="records")
@@ -77,18 +86,44 @@ def render_sidebar():
         with col_btn:
             refresh = st.button("🔄", key="refresh_screener", help="Run / refresh screener")
 
+        show_all = st.checkbox(
+            "Show all scores",
+            value=st.session_state.get("show_all_scores", False),
+            key="show_all_scores",
+            help="Show scores for all stocks, not just those passing Klarman filters",
+        )
+
         # Only run screener when user clicks the button
         if refresh:
             _run_screener.clear()
+            _run_screener_unfiltered.clear()
             with st.spinner("Screening S&P 500… (this takes a few minutes)"):
-                st.session_state.watchlist_data = _run_screener(50)
+                if show_all:
+                    st.session_state.watchlist_data = _run_screener_unfiltered(50)
+                else:
+                    st.session_state.watchlist_data = _run_screener(50)
+
+        # Re-run with different filter if toggle changed without refresh
+        # (only if we already have cached data)
+        if "watchlist_data" in st.session_state and not refresh:
+            cached = st.session_state.get("watchlist_data", [])
+            # Detect mismatch: if show_all but data has no passes_filter key, or vice versa
+            has_filter_col = cached and "passes_filter" in cached[0] if cached else False
+            if show_all and not has_filter_col:
+                _run_screener_unfiltered.clear()
+                with st.spinner("Screening S&P 500… (this takes a few minutes)"):
+                    st.session_state.watchlist_data = _run_screener_unfiltered(50)
+            elif not show_all and has_filter_col:
+                _run_screener.clear()
+                with st.spinner("Screening S&P 500… (this takes a few minutes)"):
+                    st.session_state.watchlist_data = _run_screener(50)
 
         watchlist = st.session_state.get("watchlist_data", [])
 
         if not watchlist:
             st.markdown(
                 f"<div style='text-align:center;color:{COLORS['gray_600']};font-size:0.75rem;padding:1.5rem 0;'>"
-                "No candidates pass Klarman filters</div>",
+                "No candidates found</div>",
                 unsafe_allow_html=True,
             )
         else:
@@ -98,13 +133,20 @@ def render_sidebar():
                 fcf_yield = candidate.get("fcf_yield_pct", 0)
                 ev_ebit = candidate.get("ev_ebit", 0)
                 p_tbv = candidate.get("price_tangible_book", 0)
+                score = candidate.get("screen_score", 0)
+                passes = candidate.get("passes_filter", True)
 
                 is_selected = st.session_state.get("selected_ticker") == ticker
                 bg = f"background-color:{'#1e3a5f30' if is_selected else 'transparent'};"
                 border_left = f"border-left:2px solid {COLORS['blue']};" if is_selected else ""
 
+                # Build label with pass/fail indicator when showing all
+                pass_icon = ""
+                if show_all:
+                    pass_icon = "PASS " if passes else "FAIL "
+
                 if st.button(
-                    f"**{ticker}**  ·  {fcf_yield:.1f}% FCF\n{name[:30]}  ·  EV/EBIT {ev_ebit:.1f}  ·  P/TBV {p_tbv:.2f}",
+                    f"{pass_icon}**{ticker}**  ·  {fcf_yield:.1f}% FCF  ·  Score {score:.4f}\n{name[:30]}  ·  EV/EBIT {ev_ebit:.1f}  ·  P/TBV {p_tbv:.2f}",
                     key=f"wl_{ticker}",
                     use_container_width=True,
                 ):
