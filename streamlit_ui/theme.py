@@ -91,12 +91,33 @@ def inject_custom_css():
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         header[data-testid="stHeader"] {
-            background-color: transparent;
+            background-color: #030712;
         }
-        /* Hide the decoration/branding bar but keep the header interactive
-           so the sidebar collapse/expand button remains accessible */
+        /* Keep the sidebar hamburger / collapse button accessible on all
+           devices including mobile — only hide the decoration bar */
         [data-testid="stDecoration"] {display: none;}
-        [data-testid="stToolbar"] {display: none;}
+        /* Hide the toolbar dots menu but NOT the sidebar toggle */
+        [data-testid="stToolbar"] > div {visibility: hidden;}
+        [data-testid="stToolbar"] > div:first-child {visibility: visible;}
+
+        /* Ensure sidebar toggle (hamburger) is always tappable on mobile */
+        button[data-testid="stSidebarCollapsedControl"],
+        button[data-testid="collapsedControl"] {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 999999 !important;
+            position: fixed !important;
+            top: 0.5rem !important;
+            left: 0.5rem !important;
+            background-color: #1f2937 !important;
+            border: 1px solid #374151 !important;
+            border-radius: 0.5rem !important;
+            padding: 0.5rem !important;
+            color: #f9fafb !important;
+            min-width: 44px !important;
+            min-height: 44px !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,

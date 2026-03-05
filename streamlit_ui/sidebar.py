@@ -38,16 +38,22 @@ def render_sidebar():
         st.divider()
 
         # ── Manual ticker search ─────────────────────────────────────────
-        ticker_input = st.text_input(
-            "Search ticker",
-            placeholder="Enter ticker (e.g. AAPL)",
-            key="ticker_search_input",
-            label_visibility="collapsed",
-        )
-        if ticker_input:
-            t = ticker_input.strip().upper()
-            if t:
-                st.session_state.selected_ticker = t
+        # Use a form so that Enter submits the ticker, clears the input,
+        # and the sidebar remains usable for the next search.
+        with st.form("ticker_search_form", clear_on_submit=True):
+            ticker_input = st.text_input(
+                "Search ticker",
+                placeholder="Enter ticker (e.g. AAPL)",
+                key="ticker_search_input",
+                label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button(
+                "Analyze", use_container_width=True
+            )
+            if submitted and ticker_input:
+                t = ticker_input.strip().upper()
+                if t:
+                    st.session_state.selected_ticker = t
 
         # ── Portfolio value ──────────────────────────────────────────────
         portfolio_value = st.number_input(
