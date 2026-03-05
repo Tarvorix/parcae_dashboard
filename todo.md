@@ -116,6 +116,10 @@
 - [x] Fix yfinance_client.py — add tangible_book_value fallbacks + ticker scraping error handling
 - [x] Add Russell 2000 via iShares IWM ETF (ported from stocks repo)
 - [x] Update sidebar with Russell 2000 universe option
+- [x] Move screener results from sidebar to main screen as ranked table
+- [x] Add screener_view.py — clickable ranked rows, score-colored, PASS/FAIL badges
+- [x] Add "Back to Screener" navigation from analysis view
+- [x] Slim sidebar to controls only (search, universe, run button, portfolio $)
 - [x] Commit and push
 
-## Total: 262/262 tests passing ✅
+## Total: 263/263 tests passing ✅

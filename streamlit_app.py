@@ -29,6 +29,7 @@ from backend.portfolio.tail_risk import calculate_tail_risk_summary
 
 from streamlit_ui.theme import inject_custom_css, COLORS, fmt_price, fmt_pct, score_color
 from streamlit_ui.sidebar import render_sidebar
+from streamlit_ui.screener_view import render_screener_view
 from streamlit_ui.value_distribution import render_value_distribution
 from streamlit_ui.downside_panel import render_downside_panel
 from streamlit_ui.fcf_projections import render_fcf_projections
@@ -176,31 +177,19 @@ if st.session_state.get("show_portfolio_risk"):
 
         st.divider()
 
-# No ticker selected — welcome screen
+# No ticker selected — show screener results on main screen
 if not selected_ticker:
-    st.markdown(
-        f"""
-        <div style="
-            display:flex;
-            flex-direction:column;
-            align-items:center;
-            justify-content:center;
-            height:60vh;
-            text-align:center;
-            color:{COLORS['gray_600']};
-        ">
-            <div style="font-size:4rem;opacity:0.2;margin-bottom:1rem;">📉</div>
-            <div style="font-size:1.3rem;font-weight:700;color:{COLORS['gray_500']};margin-bottom:0.5rem;">
-                Select a ticker from the watchlist
-            </div>
-            <div style="font-size:0.9rem;">
-                Or type any ticker in the sidebar search box for a full Monte Carlo DCF analysis.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    watchlist = st.session_state.get("watchlist_data", [])
+    show_all = st.session_state.get("show_all_scores", False)
+    render_screener_view(watchlist, show_all)
 else:
+    # ── Back to screener button ──────────────────────────────────────────
+    watchlist = st.session_state.get("watchlist_data", [])
+    if watchlist:
+        if st.button("← Back to Screener", key="back_to_screener_main"):
+            st.session_state.selected_ticker = None
+            st.rerun()
+
     # ── Run analysis ─────────────────────────────────────────────────────
     with st.spinner(f"Running 100K Monte Carlo paths for {selected_ticker}…"):
         analysis = analyze_ticker(selected_ticker, portfolio_value)

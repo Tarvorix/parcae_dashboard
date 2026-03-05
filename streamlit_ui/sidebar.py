@@ -1,6 +1,7 @@
 """
-Sidebar: Klarman screener watchlist, manual ticker search, portfolio value input.
-Ports the left sidebar from App.tsx + Watchlist.tsx.
+Sidebar: Controls for universe selection, screener execution, manual ticker search,
+and portfolio value input.  Screener results are rendered on the main screen via
+screener_view.py.
 """
 
 import streamlit as st
@@ -56,8 +57,6 @@ def render_sidebar():
         st.divider()
 
         # ── Manual ticker search ─────────────────────────────────────────
-        # Use a form so that Enter submits the ticker, clears the input,
-        # and the sidebar remains usable for the next search.
         with st.form("ticker_search_form", clear_on_submit=True):
             ticker_input = st.text_input(
                 "Search ticker",
@@ -85,17 +84,13 @@ def render_sidebar():
 
         st.divider()
 
-        # ── Screener ─────────────────────────────────────────────────────
-        col_label, col_btn = st.columns([3, 1])
-        with col_label:
-            st.markdown(
-                f"<span style='font-size:0.7rem;color:{COLORS['gray_400']};text-transform:uppercase;letter-spacing:0.05em;'>Screener</span>",
-                unsafe_allow_html=True,
-            )
-        with col_btn:
-            refresh = st.button("🔄", key="refresh_screener", help="Run / refresh screener")
+        # ── Screener controls ────────────────────────────────────────────
+        st.markdown(
+            f"<span style='font-size:0.7rem;color:{COLORS['gray_400']};text-transform:uppercase;letter-spacing:0.05em;font-weight:600;'>Screener</span>",
+            unsafe_allow_html=True,
+        )
 
-        # ── Universe selector ──────────────────────────────────────────
+        # Universe selector
         universe_label = st.selectbox(
             "Universe",
             options=list(UNIVERSE_LABELS.keys()),
@@ -112,7 +107,12 @@ def render_sidebar():
             help="Show scores for all stocks, not just those passing Klarman filters",
         )
 
-        # Only run screener when user clicks the button
+        # Run screener button
+        refresh = st.button(
+            "Run Screener", key="refresh_screener",
+            use_container_width=True, type="primary",
+        )
+
         if refresh:
             _run_screener.clear()
             _run_screener_unfiltered.clear()
@@ -124,6 +124,8 @@ def render_sidebar():
                     st.session_state.watchlist_data = _run_screener(50, universe)
                 st.session_state._last_universe = universe
                 st.session_state._last_show_all = show_all
+            # Clear selected ticker to show screener results on main screen
+            st.session_state.selected_ticker = None
 
         # Re-run if universe or filter toggle changed without clicking refresh
         if "watchlist_data" in st.session_state and not refresh:
@@ -141,49 +143,30 @@ def render_sidebar():
                     st.session_state._last_universe = universe
                     st.session_state._last_show_all = show_all
 
+        # Show result count
         watchlist = st.session_state.get("watchlist_data", [])
-
-        if not watchlist:
+        if watchlist:
             st.markdown(
-                f"<div style='text-align:center;color:{COLORS['gray_600']};font-size:0.75rem;padding:1.5rem 0;'>"
-                "No candidates found</div>",
+                f"<div style='text-align:center;color:{COLORS['gray_500']};font-size:0.75rem;padding:0.5rem 0;'>"
+                f"{len(watchlist)} stocks ranked by score</div>",
                 unsafe_allow_html=True,
             )
-        else:
-            for candidate in watchlist:
-                ticker = candidate["ticker"]
-                name = candidate.get("name", ticker)
-                fcf_yield = candidate.get("fcf_yield_pct")
-                ev_ebit = candidate.get("ev_ebit")
-                p_tbv = candidate.get("price_tangible_book")
-                score = candidate.get("screen_score", 0)
-                passes = candidate.get("passes_filter", True)
 
-                is_selected = st.session_state.get("selected_ticker") == ticker
-                bg = f"background-color:{'#1e3a5f30' if is_selected else 'transparent'};"
-                border_left = f"border-left:2px solid {COLORS['blue']};" if is_selected else ""
+        st.divider()
 
-                # Build label with pass/fail indicator when showing all
-                pass_icon = ""
-                if show_all:
-                    pass_icon = "PASS " if passes else "FAIL "
-
-                # Format metrics, handling None values gracefully
-                fcf_str = f"{fcf_yield:.1f}% FCF" if fcf_yield is not None else "— FCF"
-                ev_str = f"EV/EBIT {ev_ebit:.1f}" if ev_ebit is not None else "EV/EBIT —"
-                ptbv_str = f"P/TBV {p_tbv:.2f}" if p_tbv is not None else "P/TBV —"
-
-                if st.button(
-                    f"{pass_icon}**{ticker}**  ·  {fcf_str}  ·  Score {score:.4f}\n{name[:30]}  ·  {ev_str}  ·  {ptbv_str}",
-                    key=f"wl_{ticker}",
-                    use_container_width=True,
-                ):
-                    st.session_state.selected_ticker = ticker
+        # ── Back to screener (when viewing analysis) ──────────────────────
+        if st.session_state.get("selected_ticker") and watchlist:
+            if st.button(
+                "← Back to Screener",
+                key="back_to_screener",
+                use_container_width=True,
+            ):
+                st.session_state.selected_ticker = None
+                st.rerun()
 
         # ── Portfolio risk button ────────────────────────────────────────
         analyzed = st.session_state.get("analysis_tickers", [])
         if len(analyzed) >= 2:
-            st.divider()
             if st.button(
                 f"📊 Portfolio Risk ({len(analyzed)} positions)",
                 key="portfolio_risk_btn",
