@@ -8,19 +8,27 @@ from backend.screener.screen import run_klarman_screen
 from streamlit_ui.theme import COLORS, fmt_dollar
 
 
+UNIVERSE_LABELS = {
+    "S&P 500": "sp500",
+    "S&P Mid-Cap 400": "sp400",
+    "S&P Small-Cap 600": "sp600",
+    "S&P 1500 (All)": "all",
+}
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
-def _run_screener(top_n: int = 50) -> list[dict]:
+def _run_screener(top_n: int = 50, universe: str = "sp500") -> list[dict]:
     """Run the Klarman screen (filtered) and cache results for 1 hour."""
-    df = run_klarman_screen(show_progress=False, filter_results=True)
+    df = run_klarman_screen(show_progress=False, filter_results=True, universe=universe)
     if df.empty:
         return []
     return df.head(top_n).to_dict(orient="records")
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _run_screener_unfiltered(top_n: int = 50) -> list[dict]:
+def _run_screener_unfiltered(top_n: int = 50, universe: str = "sp500") -> list[dict]:
     """Run the Klarman screen (unfiltered — show all scores) and cache results for 1 hour."""
-    df = run_klarman_screen(show_progress=False, filter_results=False)
+    df = run_klarman_screen(show_progress=False, filter_results=False, universe=universe)
     if df.empty:
         return []
     return df.head(top_n).to_dict(orient="records")
@@ -86,6 +94,16 @@ def render_sidebar():
         with col_btn:
             refresh = st.button("🔄", key="refresh_screener", help="Run / refresh screener")
 
+        # ── Universe selector ──────────────────────────────────────────
+        universe_label = st.selectbox(
+            "Universe",
+            options=list(UNIVERSE_LABELS.keys()),
+            index=0,
+            key="universe_selector",
+            label_visibility="collapsed",
+        )
+        universe = UNIVERSE_LABELS[universe_label]
+
         show_all = st.checkbox(
             "Show all scores",
             value=st.session_state.get("show_all_scores", False),
@@ -97,26 +115,30 @@ def render_sidebar():
         if refresh:
             _run_screener.clear()
             _run_screener_unfiltered.clear()
-            with st.spinner("Screening S&P 500… (this takes a few minutes)"):
+            spinner_msg = f"Screening {universe_label}… (this takes a few minutes)"
+            with st.spinner(spinner_msg):
                 if show_all:
-                    st.session_state.watchlist_data = _run_screener_unfiltered(50)
+                    st.session_state.watchlist_data = _run_screener_unfiltered(50, universe)
                 else:
-                    st.session_state.watchlist_data = _run_screener(50)
+                    st.session_state.watchlist_data = _run_screener(50, universe)
+                st.session_state._last_universe = universe
+                st.session_state._last_show_all = show_all
 
-        # Re-run with different filter if toggle changed without refresh
-        # (only if we already have cached data)
+        # Re-run if universe or filter toggle changed without clicking refresh
         if "watchlist_data" in st.session_state and not refresh:
-            cached = st.session_state.get("watchlist_data", [])
-            # Detect mismatch: if show_all but data has no passes_filter key, or vice versa
-            has_filter_col = cached and "passes_filter" in cached[0] if cached else False
-            if show_all and not has_filter_col:
-                _run_screener_unfiltered.clear()
-                with st.spinner("Screening S&P 500… (this takes a few minutes)"):
-                    st.session_state.watchlist_data = _run_screener_unfiltered(50)
-            elif not show_all and has_filter_col:
+            last_universe = st.session_state.get("_last_universe", "sp500")
+            last_show_all = st.session_state.get("_last_show_all", False)
+            if universe != last_universe or show_all != last_show_all:
                 _run_screener.clear()
-                with st.spinner("Screening S&P 500… (this takes a few minutes)"):
-                    st.session_state.watchlist_data = _run_screener(50)
+                _run_screener_unfiltered.clear()
+                spinner_msg = f"Screening {universe_label}… (this takes a few minutes)"
+                with st.spinner(spinner_msg):
+                    if show_all:
+                        st.session_state.watchlist_data = _run_screener_unfiltered(50, universe)
+                    else:
+                        st.session_state.watchlist_data = _run_screener(50, universe)
+                    st.session_state._last_universe = universe
+                    st.session_state._last_show_all = show_all
 
         watchlist = st.session_state.get("watchlist_data", [])
 

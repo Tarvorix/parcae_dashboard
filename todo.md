@@ -93,4 +93,11 @@
 - [x] backend/main.py: added `filter_results` query param to `/watchlist` endpoint
 - [x] All 84 screener + API tests passing (47 + 37)
 
+## Phase 11 — S&P Mid-Cap 400 & Small-Cap 600 Universe Support ✅ COMPLETE
+- [x] backend/data/yfinance_client.py: added `_scrape_sp_tickers()` shared helper, `get_sp400_tickers()`, `get_sp600_tickers()`
+- [x] backend/screener/screen.py: added `UNIVERSE_OPTIONS`, `get_universe_tickers()`, and `universe` param to `run_klarman_screen()`
+- [x] streamlit_ui/sidebar.py: added universe selector dropdown (S&P 500 / Mid-Cap 400 / Small-Cap 600 / S&P 1500 All), auto-reruns on universe change
+- [x] backend/main.py: added `universe` query param to `/watchlist` endpoint with validation
+- [x] All 84 screener + API tests passing (47 + 37)
+
 ## Total: 262/262 tests passing ✅

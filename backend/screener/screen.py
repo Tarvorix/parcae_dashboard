@@ -15,10 +15,47 @@ import pandas as pd
 from tqdm import tqdm
 from typing import Optional
 
-from backend.data.yfinance_client import get_sp500_tickers, get_fundamentals
+from backend.data.yfinance_client import (
+    get_sp500_tickers,
+    get_sp400_tickers,
+    get_sp600_tickers,
+    get_fundamentals,
+)
 from backend.config import KlarmanThresholds
 
 config = KlarmanThresholds()
+
+# ── Universe options ─────────────────────────────────────────────────────────
+
+UNIVERSE_OPTIONS = ("sp500", "sp400", "sp600", "all")
+
+
+def get_universe_tickers(universe: str = "sp500") -> list[str]:
+    """
+    Return ticker list for the requested universe.
+      sp500 — S&P 500 (large cap)
+      sp400 — S&P Mid-Cap 400
+      sp600 — S&P Small-Cap 600
+      all   — S&P 1500 (500 + 400 + 600 combined, deduplicated)
+    """
+    if universe == "sp500":
+        return get_sp500_tickers()
+    elif universe == "sp400":
+        return get_sp400_tickers()
+    elif universe == "sp600":
+        return get_sp600_tickers()
+    elif universe == "all":
+        combined = get_sp500_tickers() + get_sp400_tickers() + get_sp600_tickers()
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique: list[str] = []
+        for t in combined:
+            if t not in seen:
+                seen.add(t)
+                unique.append(t)
+        return unique
+    else:
+        return get_sp500_tickers()
 
 
 # ── Individual metric calculators ─────────────────────────────────────────────
@@ -98,10 +135,13 @@ def run_klarman_screen(
     tickers: Optional[list[str]] = None,
     show_progress: bool = True,
     filter_results: bool = True,
+    universe: str = "sp500",
 ) -> pd.DataFrame:
     """
     Run the Klarman screen against the supplied ticker list.
-    Defaults to the full S&P 500 if no list is provided.
+
+    If no tickers list is provided, the universe parameter selects which
+    index to screen: "sp500", "sp400", "sp600", or "all" (S&P 1500).
 
     When filter_results=True (default), only candidates passing all hard
     Klarman filters are returned.  When filter_results=False, all stocks
@@ -112,7 +152,7 @@ def run_klarman_screen(
     best opportunities first.  Returns an empty DataFrame if none qualify.
     """
     if tickers is None:
-        tickers = get_sp500_tickers()
+        tickers = get_universe_tickers(universe)
 
     results: list[dict] = []
 
