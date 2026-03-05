@@ -14,7 +14,7 @@ if "SEC_IDENTITY" not in os.environ:
     try:
         os.environ["SEC_IDENTITY"] = st.secrets["SEC_IDENTITY"]
     except Exception:
-        os.environ["SEC_IDENTITY"] = "Tarvorix Tarvorix@users.noreply.github.com"
+        os.environ["SEC_IDENTITY"] = "ParcaeDashboard admin@parcaedashboard.com"
 
 import numpy as np
 

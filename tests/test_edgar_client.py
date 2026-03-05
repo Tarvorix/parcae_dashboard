@@ -4,10 +4,37 @@ SEC EDGAR network calls are fully mocked so tests are fast and offline-safe.
 """
 
 import pytest
+import pandas as pd
 from unittest.mock import MagicMock, patch, call
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _make_statement_df(data: dict[str, float], date_col: str = "2024-09-30") -> pd.DataFrame:
+    """Build a mock Statement DataFrame matching edgartools 5.x format."""
+    rows = []
+    for concept_suffix, value in data.items():
+        rows.append({
+            "concept": f"us-gaap_{concept_suffix}",
+            "label": concept_suffix,
+            "standard_concept": concept_suffix,
+            date_col: value,
+            "level": 0,
+            "abstract": False,
+            "dimension": False,
+            "is_breakdown": False,
+            "dimension_axis": None,
+            "dimension_member": None,
+            "dimension_member_label": None,
+            "dimension_label": None,
+            "balance": None,
+            "weight": None,
+            "preferred_sign": None,
+            "parent_concept": None,
+            "parent_abstract_concept": None,
+        })
+    return pd.DataFrame(rows)
+
 
 def make_mock_filing(
     rev: float = 500_000_000,
@@ -15,24 +42,30 @@ def make_mock_filing(
     cfo: float = 70_000_000,
     capex: float = 20_000_000,
 ) -> MagicMock:
-    """Construct a mock 10-K filing with financials."""
+    """Construct a mock 10-K filing with financials (edgartools 5.x API)."""
     filing = MagicMock()
-    income = MagicMock()
-    cashflow = MagicMock()
 
-    income.get.side_effect = lambda key: {
+    inc_df = _make_statement_df({
         "Revenues": rev,
-        "RevenueFromContractWithCustomerExcludingAssessedTax": None,
         "NetIncomeLoss": ni,
-    }.get(key)
+    })
 
-    cashflow.get.side_effect = lambda key: {
+    cf_df = _make_statement_df({
         "NetCashProvidedByUsedInOperatingActivities": cfo,
         "PaymentsToAcquirePropertyPlantAndEquipment": capex,
-    }.get(key)
+    })
 
-    filing.financials.income_statement = income
-    filing.financials.cash_flow_statement = cashflow
+    income_stmt = MagicMock()
+    income_stmt.to_dataframe.return_value = inc_df
+
+    cf_stmt = MagicMock()
+    cf_stmt.to_dataframe.return_value = cf_df
+
+    tenk = MagicMock()
+    tenk.income_statement = income_stmt
+    tenk.cash_flow_statement = cf_stmt
+
+    filing.data_object.return_value = tenk
     return filing
 
 
@@ -100,9 +133,9 @@ class TestGet10YrFinancials:
     @patch("backend.data.edgar_client.Company")
     def test_skips_filing_with_missing_fields(self, mock_company_cls):
         filings = make_10_filings()
-        # Make 2 filings throw on financial access
+        # Make 2 filings throw on data_object() access
         for f in filings[:2]:
-            f.financials.income_statement.get.side_effect = Exception("parse error")
+            f.data_object.side_effect = Exception("parse error")
 
         mock_company = MagicMock()
         mock_company.get_filings.return_value.head.return_value = filings
@@ -116,7 +149,7 @@ class TestGet10YrFinancials:
 
     @patch("backend.data.edgar_client.Company")
     def test_fcf_calculated_correctly(self, mock_company_cls):
-        """FCF = CFO − |CapEx|"""
+        """FCF = CFO - |CapEx|"""
         filing = make_mock_filing(cfo=80_000_000, capex=30_000_000)
         filings = [filing] * 7  # enough to pass 5-year threshold
 

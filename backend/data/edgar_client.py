@@ -8,10 +8,23 @@ from backend.config import SEC_IDENTITY
 set_identity(SEC_IDENTITY)
 
 
+def _lookup_concept(df: pd.DataFrame, concept_suffix: str, date_col: str) -> Optional[float]:
+    """Look up a GAAP concept value from a Statement DataFrame."""
+    full_concept = f"us-gaap_{concept_suffix}"
+    mask = (df["concept"] == full_concept) & (df["dimension"] == False) & (df["abstract"] == False)
+    rows = df.loc[mask, date_col]
+    if rows.empty:
+        return None
+    val = rows.iloc[0]
+    if pd.isna(val):
+        return None
+    return float(val)
+
+
 def get_10yr_financials(ticker: str) -> Optional[dict]:
     """
     Pull up to 10 years of annual financials from SEC EDGAR 10-K filings.
-    Returns a dict with lists of annual values (oldest → newest).
+    Returns a dict with lists of annual values (oldest -> newest).
     Returns None if fewer than 5 years of usable data are found.
     """
     try:
@@ -26,19 +39,45 @@ def get_10yr_financials(ticker: str) -> Optional[dict]:
 
         for filing in filings:
             try:
-                financials = filing.financials
-                income = financials.income_statement
-                cashflow = financials.cash_flow_statement
+                tenk = filing.data_object()
+                if tenk is None:
+                    continue
 
+                income_stmt = tenk.income_statement
+                cf_stmt = tenk.cash_flow_statement
+                if income_stmt is None or cf_stmt is None:
+                    continue
+
+                inc_df = income_stmt.to_dataframe()
+                cf_df = cf_stmt.to_dataframe()
+
+                # Find the primary period date column (first date column = most recent period)
+                date_cols = [c for c in inc_df.columns if c[:2] == "20"]
+                if not date_cols:
+                    continue
+                primary_date = date_cols[0]
+
+                # Also need the same date column in cash flow
+                cf_date_cols = [c for c in cf_df.columns if c[:2] == "20"]
+                if not cf_date_cols:
+                    continue
+                cf_primary_date = cf_date_cols[0]
+
+                # Revenue — try multiple GAAP concepts
                 rev = (
-                    income.get("Revenues")
-                    or income.get("RevenueFromContractWithCustomerExcludingAssessedTax")
+                    _lookup_concept(inc_df, "Revenues", primary_date)
+                    or _lookup_concept(inc_df, "RevenueFromContractWithCustomerExcludingAssessedTax", primary_date)
+                    or _lookup_concept(inc_df, "SalesRevenueNet", primary_date)
+                    or _lookup_concept(inc_df, "RevenueFromContractWithCustomerIncludingAssessedTax", primary_date)
                 )
-                ni = income.get("NetIncomeLoss")
-                cfo = cashflow.get("NetCashProvidedByUsedInOperatingActivities")
-                capex = cashflow.get("PaymentsToAcquirePropertyPlantAndEquipment")
 
-                if rev and ni and cfo and capex:
+                ni = _lookup_concept(inc_df, "NetIncomeLoss", primary_date)
+
+                cfo = _lookup_concept(cf_df, "NetCashProvidedByUsedInOperatingActivities", cf_primary_date)
+
+                capex = _lookup_concept(cf_df, "PaymentsToAcquirePropertyPlantAndEquipment", cf_primary_date)
+
+                if rev and ni is not None and cfo is not None and capex is not None:
                     rev_f = float(rev)
                     ni_f = float(ni)
                     cfo_f = float(cfo)

@@ -32,5 +32,5 @@ class KlarmanThresholds:
 # Required by SEC EDGAR — override via environment variable
 SEC_IDENTITY: str = os.environ.get(
     "SEC_IDENTITY",
-    "Tarvorix Tarvorix@users.noreply.github.com"
+    "ParcaeDashboard admin@parcaedashboard.com"
 )
