@@ -57,4 +57,17 @@
 - [x] docker-compose.yml
 - [x] .env.example
 
+## Phase 7 — Streamlit Conversion ✅ COMPLETE
+- [x] .streamlit/config.toml (dark theme matching React)
+- [x] requirements.txt (root-level for Streamlit Cloud)
+- [x] streamlit_ui/theme.py (CSS injection, color constants, Plotly template)
+- [x] streamlit_ui/sidebar.py (watchlist, search, screener with caching)
+- [x] streamlit_ui/value_distribution.py (200-bin histogram with Plotly)
+- [x] streamlit_ui/downside_panel.py (Klarman score + 6-item checklist)
+- [x] streamlit_ui/fcf_projections.py (bear/base/bull area chart + table)
+- [x] streamlit_ui/decision_matrix.py (Kelly sizing + scenario table)
+- [x] streamlit_ui/portfolio_risk.py (copula/historical/positions tabs + radar)
+- [x] streamlit_app.py (entry point, direct backend calls, cached analysis)
+- [x] Deployment: Streamlit Cloud (free, GitHub-connected, zero config)
+
 ## Total: 260/260 tests passing ✅

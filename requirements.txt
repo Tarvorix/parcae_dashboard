@@ -1,0 +1,10 @@
+streamlit>=1.32.0
+plotly>=5.18.0
+yfinance>=0.2.38
+edgartools>=2.5.0
+pandas>=2.2.1
+numpy>=1.26.4
+scipy>=1.13.0
+tqdm>=4.66.2
+lxml>=5.2.1
+html5lib>=1.1
