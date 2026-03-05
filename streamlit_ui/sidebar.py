@@ -71,12 +71,10 @@ def render_sidebar():
         with col_btn:
             refresh = st.button("🔄", key="refresh_screener", help="Run / refresh screener")
 
-        # Load or refresh screener data
+        # Only run screener when user clicks the button
         if refresh:
             _run_screener.clear()
-
-        if "watchlist_data" not in st.session_state or refresh:
-            with st.spinner("Screening S&P 500…"):
+            with st.spinner("Screening S&P 500… (this takes a few minutes)"):
                 st.session_state.watchlist_data = _run_screener(50)
 
         watchlist = st.session_state.get("watchlist_data", [])

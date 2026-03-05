@@ -60,7 +60,11 @@ def get_dividend_history(ticker: str) -> pd.Series:
 
 def get_sp500_tickers() -> list[str]:
     """Scrape current S&P 500 constituents from Wikipedia."""
-    tables = pd.read_html(
-        "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    )
+    import urllib.request
+
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    req = urllib.request.Request(url, headers={"User-Agent": "ParcaeDashboard/1.0"})
+    with urllib.request.urlopen(req) as resp:
+        html = resp.read().decode("utf-8")
+    tables = pd.read_html(html)
     return tables[0]["Symbol"].str.replace(".", "-", regex=False).tolist()
