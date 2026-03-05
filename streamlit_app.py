@@ -18,7 +18,7 @@ if "SEC_IDENTITY" not in os.environ:
 
 import numpy as np
 
-from backend.data.yfinance_client import get_fundamentals, get_price_history
+from backend.data.yfinance_client import get_fundamentals, get_price_history, build_fallback_edgar_data
 from backend.data.edgar_client import get_10yr_financials
 from backend.engine.distributions import build_distributions_from_history
 from backend.engine.monte_carlo import run_dcf_simulation
@@ -73,7 +73,10 @@ def analyze_ticker(ticker: str, portfolio_value: float) -> dict | None:
 
     edgar_data = get_10yr_financials(ticker)
     if not edgar_data:
-        return None
+        # Fallback: build synthetic history from yfinance trailing fundamentals
+        edgar_data = build_fallback_edgar_data(yf_data)
+        if not edgar_data:
+            return None
 
     distributions = build_distributions_from_history(edgar_data, yf_data)
     intrinsic_values = run_dcf_simulation(distributions)

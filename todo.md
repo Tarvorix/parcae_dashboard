@@ -70,4 +70,15 @@
 - [x] streamlit_app.py (entry point, direct backend calls, cached analysis)
 - [x] Deployment: Streamlit Cloud (free, GitHub-connected, zero config)
 
-## Total: 260/260 tests passing ✅
+## Phase 8 — Data Reliability Fix ✅ COMPLETE
+- [x] EDGAR client: added 19 revenue, 7 net income, 4 CFO, 9 CapEx GAAP concept fallbacks
+- [x] EDGAR client: lowered minimum year threshold from 5 to 3 (MIN_YEARS_REQUIRED)
+- [x] EDGAR client: added `_lookup_first()` helper for fallback chain lookups
+- [x] yfinance_client: added `build_fallback_edgar_data()` — synthesizes 5-year history from trailing fundamentals when EDGAR fails
+- [x] streamlit_app.py: integrated yfinance fallback in `analyze_ticker()`
+- [x] backend/main.py: integrated yfinance fallback in `/analyze/{ticker}` route
+- [x] streamlit_ui/theme.py: fixed sidebar disappearing — removed `header {visibility: hidden}` that hid the sidebar toggle button
+- [x] tests/test_edgar_client.py: updated 5-year test → 3-year threshold, added test for 3-year data
+- [x] tests/test_api.py: updated EDGAR failure test for fallback behavior, added fallback success test
+
+## Total: 262/262 tests passing ✅

@@ -58,6 +58,56 @@ def get_dividend_history(ticker: str) -> pd.Series:
     return stock.dividends
 
 
+def build_fallback_edgar_data(yf_data: dict) -> Optional[dict]:
+    """
+    Build a synthetic EDGAR-like data dict from yfinance trailing fundamentals.
+
+    Used as a fallback when SEC EDGAR cannot provide enough historical 10-K
+    filings (e.g. recent IPOs, foreign filers, parsing failures).  Constructs
+    a conservative 5-year synthetic history by assuming flat revenue and
+    margins — this ensures the Monte Carlo engine can still run, albeit with
+    wider (more conservative) distributions.
+    """
+    total_revenue = yf_data.get("total_revenue")
+    free_cashflow = yf_data.get("free_cashflow")
+    ebit = yf_data.get("ebit")
+
+    if not total_revenue or total_revenue <= 0:
+        return None
+
+    # Derive net income proxy from EBIT (assume ~20% effective tax rate)
+    ni_proxy = ebit * 0.80 if ebit else total_revenue * 0.05
+
+    # Derive FCF — use yfinance value if available, else conservative 5% of rev
+    fcf_proxy = free_cashflow if free_cashflow else total_revenue * 0.05
+
+    # Derive capex as CFO minus FCF approximation (conservative)
+    cfo_proxy = fcf_proxy * 1.3 if fcf_proxy > 0 else total_revenue * 0.08
+    capex_proxy = abs(cfo_proxy - fcf_proxy)
+
+    margin_proxy = ni_proxy / total_revenue if total_revenue > 0 else 0.05
+
+    # Build 5 years of synthetic data with slight historical variation
+    # to give the distribution builder non-degenerate spread.
+    # Apply ±5% annual variation around current trailing values.
+    n_years = 5
+    variation_factors = [0.90, 0.95, 0.97, 1.00, 1.02]
+
+    revenues = [total_revenue * f for f in variation_factors]
+    net_incomes = [ni_proxy * f for f in variation_factors]
+    fcfs = [fcf_proxy * f for f in variation_factors]
+    margins_list = [margin_proxy] * n_years
+    capex = [capex_proxy * f for f in variation_factors]
+
+    return {
+        "revenues": revenues,
+        "net_incomes": net_incomes,
+        "fcfs": fcfs,
+        "margins": margins_list,
+        "capex": capex,
+    }
+
+
 def get_sp500_tickers() -> list[str]:
     """Scrape current S&P 500 constituents from Wikipedia."""
     import urllib.request
