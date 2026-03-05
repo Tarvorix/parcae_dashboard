@@ -87,4 +87,17 @@
 - [x] streamlit_ui/theme.py: added explicit CSS to force sidebar hamburger button visible + tappable on mobile (44px min touch target)
 - [x] streamlit_ui/sidebar.py: wrapped ticker search in `st.form(clear_on_submit=True)` so input clears after submission, allowing sequential analyses
 
+## Phase 10 — Screener Show All Scores ✅ COMPLETE
+- [x] backend/screener/screen.py: added `filter_results` param to `run_klarman_screen()` — when False, returns all scored stocks with `passes_filter` column
+- [x] streamlit_ui/sidebar.py: added "Show all scores" checkbox toggle, `_run_screener_unfiltered()` cached function, pass/fail indicators and score display on candidate cards
+- [x] backend/main.py: added `filter_results` query param to `/watchlist` endpoint
+- [x] All 84 screener + API tests passing (47 + 37)
+
+## Phase 11 — S&P Mid-Cap 400 & Small-Cap 600 Universe Support ✅ COMPLETE
+- [x] backend/data/yfinance_client.py: added `_scrape_sp_tickers()` shared helper, `get_sp400_tickers()`, `get_sp600_tickers()`
+- [x] backend/screener/screen.py: added `UNIVERSE_OPTIONS`, `get_universe_tickers()`, and `universe` param to `run_klarman_screen()`
+- [x] streamlit_ui/sidebar.py: added universe selector dropdown (S&P 500 / Mid-Cap 400 / Small-Cap 600 / S&P 1500 All), auto-reruns on universe change
+- [x] backend/main.py: added `universe` query param to `/watchlist` endpoint with validation
+- [x] All 84 screener + API tests passing (47 + 37)
+
 ## Total: 262/262 tests passing ✅

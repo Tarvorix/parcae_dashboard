@@ -108,13 +108,33 @@ def build_fallback_edgar_data(yf_data: dict) -> Optional[dict]:
     }
 
 
-def get_sp500_tickers() -> list[str]:
-    """Scrape current S&P 500 constituents from Wikipedia."""
+def _scrape_sp_tickers(url: str) -> list[str]:
+    """Scrape S&P index constituents from a Wikipedia list page."""
     import urllib.request
 
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
     req = urllib.request.Request(url, headers={"User-Agent": "ParcaeDashboard/1.0"})
     with urllib.request.urlopen(req) as resp:
         html = resp.read().decode("utf-8")
     tables = pd.read_html(html)
     return tables[0]["Symbol"].str.replace(".", "-", regex=False).tolist()
+
+
+def get_sp500_tickers() -> list[str]:
+    """Scrape current S&P 500 constituents from Wikipedia."""
+    return _scrape_sp_tickers(
+        "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    )
+
+
+def get_sp400_tickers() -> list[str]:
+    """Scrape current S&P Mid-Cap 400 constituents from Wikipedia."""
+    return _scrape_sp_tickers(
+        "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
+    )
+
+
+def get_sp600_tickers() -> list[str]:
+    """Scrape current S&P Small-Cap 600 constituents from Wikipedia."""
+    return _scrape_sp_tickers(
+        "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
+    )
