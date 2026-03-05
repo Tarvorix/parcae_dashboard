@@ -21,6 +21,15 @@ def get_fundamentals(ticker: str) -> Optional[dict]:
         if not price or not total_revenue:
             return None
 
+        # Tangible book value per share — try multiple yfinance fields
+        # bookValue is "Book Value Per Share (mrq)" in Yahoo Finance
+        tangible_bv = info.get("bookValue")
+        if tangible_bv is None:
+            # Reverse-calculate from priceToBook ratio if available
+            ptb_ratio = info.get("priceToBook")
+            if ptb_ratio and ptb_ratio > 0 and price:
+                tangible_bv = price / ptb_ratio
+
         return {
             "ticker": ticker,
             "name": info.get("longName", ticker),
@@ -31,7 +40,7 @@ def get_fundamentals(ticker: str) -> Optional[dict]:
             "ebitda": info.get("ebitda"),
             "free_cashflow": info.get("freeCashflow"),
             "total_revenue": total_revenue,
-            "tangible_book_value": info.get("bookValue"),  # Per share
+            "tangible_book_value": tangible_bv,  # Per share
             "shares_outstanding": info.get("sharesOutstanding"),
             "total_debt": info.get("totalDebt"),
             "cash": info.get("totalCash"),
@@ -113,28 +122,134 @@ def _scrape_sp_tickers(url: str) -> list[str]:
     import urllib.request
 
     req = urllib.request.Request(url, headers={"User-Agent": "ParcaeDashboard/1.0"})
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=15) as resp:
         html = resp.read().decode("utf-8")
     tables = pd.read_html(html)
     return tables[0]["Symbol"].str.replace(".", "-", regex=False).tolist()
 
 
+# ── Hardcoded fallback tickers (top ~50 by market cap) ────────────────────────
+# Used when Wikipedia scraping fails (rate-limited, network errors, etc.)
+
+_SP500_FALLBACK = [
+    "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK-B", "UNH", "JNJ",
+    "V", "XOM", "JPM", "PG", "MA", "HD", "CVX", "LLY", "ABBV", "MRK",
+    "PEP", "KO", "COST", "AVGO", "WMT", "TMO", "MCD", "CSCO", "ACN", "ABT",
+    "DHR", "CRM", "NEE", "LIN", "TXN", "WFC", "BMY", "PM", "UPS", "MS",
+    "RTX", "UNP", "SCHW", "HON", "LOW", "AMGN", "INTC", "QCOM", "IBM", "GS",
+]
+
+_SP400_FALLBACK = [
+    "DECK", "WSM", "FIX", "TXRH", "TOL", "PCTY", "LNTH", "MEDP", "MTH", "EHC",
+    "CIVI", "PNFP", "PIPR", "CBT", "WFRD", "SLM", "BOOT", "KNF", "CALM", "CSWI",
+    "IBOC", "SIG", "COOP", "PI", "ACIW", "AWI", "MOD", "DY", "ESNT", "BLD",
+    "ENSG", "SKY", "QTWO", "MMSI", "NOVT", "SITE", "RHP", "KBR", "FSS", "VIRT",
+    "TNET", "EXPO", "PRGS", "SPSC", "CW", "GMS", "TFIN", "APAM", "POWL", "SIGI",
+]
+
+_SP600_FALLBACK = [
+    "CARG", "ATEN", "SMTC", "AEIS", "AORT", "ARLO", "AROC", "AX", "BCC", "CAKE",
+    "CENTA", "CPRX", "DFIN", "DORM", "EAT", "EPRT", "ETD", "EVTC", "FELE", "FORM",
+    "GSHD", "HASI", "HBI", "HEES", "HLF", "IBKR", "IDCC", "IPAR", "JACK", "KFRC",
+    "LGND", "LKFN", "LQDT", "MATX", "MCRI", "MHO", "MGEE", "NSIT", "OFG", "PATK",
+    "PLMR", "PRFT", "PRLB", "RDN", "RGR", "RMBS", "SNDR", "STEP", "TBBK", "UFPI",
+]
+
+
 def get_sp500_tickers() -> list[str]:
-    """Scrape current S&P 500 constituents from Wikipedia."""
-    return _scrape_sp_tickers(
-        "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    )
+    """Scrape current S&P 500 constituents from Wikipedia, with hardcoded fallback."""
+    try:
+        return _scrape_sp_tickers(
+            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        )
+    except Exception:
+        return list(_SP500_FALLBACK)
 
 
 def get_sp400_tickers() -> list[str]:
-    """Scrape current S&P Mid-Cap 400 constituents from Wikipedia."""
-    return _scrape_sp_tickers(
-        "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
-    )
+    """Scrape current S&P Mid-Cap 400 constituents from Wikipedia, with hardcoded fallback."""
+    try:
+        return _scrape_sp_tickers(
+            "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
+        )
+    except Exception:
+        return list(_SP400_FALLBACK)
 
 
 def get_sp600_tickers() -> list[str]:
-    """Scrape current S&P Small-Cap 600 constituents from Wikipedia."""
-    return _scrape_sp_tickers(
-        "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
+    """Scrape current S&P Small-Cap 600 constituents from Wikipedia, with hardcoded fallback."""
+    try:
+        return _scrape_sp_tickers(
+            "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
+        )
+    except Exception:
+        return list(_SP600_FALLBACK)
+
+
+def get_russell2000_tickers() -> list[str]:
+    """
+    Fetch Russell 2000 constituents from iShares IWM ETF holdings CSV.
+    Falls back to S&P 600 + S&P 400 if the iShares download fails.
+    """
+    import urllib.request
+    import csv
+    import io
+
+    iwm_url = (
+        "https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/"
+        "1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund"
     )
+
+    try:
+        req = urllib.request.Request(iwm_url, headers={
+            "User-Agent": "ParcaeDashboard/1.0",
+            "Accept": "text/csv,text/plain,*/*",
+        })
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+
+        # The iShares CSV has header rows before the actual data.
+        # Find the line starting with "Ticker," which marks the real header.
+        lines = raw.splitlines()
+        header_idx = None
+        for i, line in enumerate(lines):
+            if line.strip().startswith("Ticker,") or line.strip().startswith('"Ticker"'):
+                header_idx = i
+                break
+
+        if header_idx is None:
+            raise ValueError("Could not find Ticker header in IWM CSV")
+
+        csv_text = "\n".join(lines[header_idx:])
+        reader = csv.DictReader(io.StringIO(csv_text))
+
+        tickers = []
+        skip_values = {"", "-", "USD", "CASH", "TBILL", "MARGIN_USD", "UNKNOWN"}
+        for row in reader:
+            ticker = (row.get("Ticker") or "").strip().upper()
+            if ticker and ticker not in skip_values:
+                # Skip rows that look like cash or currency positions
+                asset_class = (row.get("Asset Class") or "").strip().upper()
+                if asset_class in ("CASH", "FUTURES", "MONEY MARKET"):
+                    continue
+                # Normalise BRK.B → BRK-B for yfinance compatibility
+                ticker = ticker.replace(".", "-")
+                tickers.append(ticker)
+
+        if len(tickers) > 100:
+            return tickers
+
+        # Too few tickers — likely a parsing issue, fall through to fallback
+        raise ValueError(f"Only parsed {len(tickers)} tickers from IWM CSV")
+
+    except Exception:
+        # Fallback: combine S&P 600 (small-cap) + S&P 400 (mid-cap) as
+        # a reasonable approximation of the Russell 2000 universe.
+        combined = get_sp600_tickers() + get_sp400_tickers()
+        seen: set[str] = set()
+        unique: list[str] = []
+        for t in combined:
+            if t not in seen:
+                seen.add(t)
+                unique.append(t)
+        return unique

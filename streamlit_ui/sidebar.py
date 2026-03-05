@@ -12,6 +12,7 @@ UNIVERSE_LABELS = {
     "S&P 500": "sp500",
     "S&P Mid-Cap 400": "sp400",
     "S&P Small-Cap 600": "sp600",
+    "Russell 2000": "russell2000",
     "S&P 1500 (All)": "all",
 }
 
@@ -152,9 +153,9 @@ def render_sidebar():
             for candidate in watchlist:
                 ticker = candidate["ticker"]
                 name = candidate.get("name", ticker)
-                fcf_yield = candidate.get("fcf_yield_pct", 0)
-                ev_ebit = candidate.get("ev_ebit", 0)
-                p_tbv = candidate.get("price_tangible_book", 0)
+                fcf_yield = candidate.get("fcf_yield_pct")
+                ev_ebit = candidate.get("ev_ebit")
+                p_tbv = candidate.get("price_tangible_book")
                 score = candidate.get("screen_score", 0)
                 passes = candidate.get("passes_filter", True)
 
@@ -167,8 +168,13 @@ def render_sidebar():
                 if show_all:
                     pass_icon = "PASS " if passes else "FAIL "
 
+                # Format metrics, handling None values gracefully
+                fcf_str = f"{fcf_yield:.1f}% FCF" if fcf_yield is not None else "— FCF"
+                ev_str = f"EV/EBIT {ev_ebit:.1f}" if ev_ebit is not None else "EV/EBIT —"
+                ptbv_str = f"P/TBV {p_tbv:.2f}" if p_tbv is not None else "P/TBV —"
+
                 if st.button(
-                    f"{pass_icon}**{ticker}**  ·  {fcf_yield:.1f}% FCF  ·  Score {score:.4f}\n{name[:30]}  ·  EV/EBIT {ev_ebit:.1f}  ·  P/TBV {p_tbv:.2f}",
+                    f"{pass_icon}**{ticker}**  ·  {fcf_str}  ·  Score {score:.4f}\n{name[:30]}  ·  {ev_str}  ·  {ptbv_str}",
                     key=f"wl_{ticker}",
                     use_container_width=True,
                 ):

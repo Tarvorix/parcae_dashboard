@@ -19,6 +19,7 @@ from backend.data.yfinance_client import (
     get_sp500_tickers,
     get_sp400_tickers,
     get_sp600_tickers,
+    get_russell2000_tickers,
     get_fundamentals,
 )
 from backend.config import KlarmanThresholds
@@ -27,16 +28,17 @@ config = KlarmanThresholds()
 
 # ── Universe options ─────────────────────────────────────────────────────────
 
-UNIVERSE_OPTIONS = ("sp500", "sp400", "sp600", "all")
+UNIVERSE_OPTIONS = ("sp500", "sp400", "sp600", "russell2000", "all")
 
 
 def get_universe_tickers(universe: str = "sp500") -> list[str]:
     """
     Return ticker list for the requested universe.
-      sp500 — S&P 500 (large cap)
-      sp400 — S&P Mid-Cap 400
-      sp600 — S&P Small-Cap 600
-      all   — S&P 1500 (500 + 400 + 600 combined, deduplicated)
+      sp500      — S&P 500 (large cap)
+      sp400      — S&P Mid-Cap 400
+      sp600      — S&P Small-Cap 600
+      russell2000 — Russell 2000 (via iShares IWM ETF holdings)
+      all        — S&P 1500 (500 + 400 + 600 combined, deduplicated)
     """
     if universe == "sp500":
         return get_sp500_tickers()
@@ -44,6 +46,8 @@ def get_universe_tickers(universe: str = "sp500") -> list[str]:
         return get_sp400_tickers()
     elif universe == "sp600":
         return get_sp600_tickers()
+    elif universe == "russell2000":
+        return get_russell2000_tickers()
     elif universe == "all":
         combined = get_sp500_tickers() + get_sp400_tickers() + get_sp600_tickers()
         # Deduplicate while preserving order
@@ -117,18 +121,35 @@ def passes_klarman_filters(
     return True
 
 
-def score_candidate(ev_ebit: float, fcf_yield: float, ptb: float) -> float:
+def score_candidate(
+    ev_ebit: Optional[float],
+    fcf_yield: Optional[float],
+    ptb: Optional[float],
+) -> Optional[float]:
     """
     Composite screen score — higher is better.
       40% weight: low EV/EBIT
       40% weight: high FCF yield
       20% weight: low Price/Tangible Book
-    """
-    ev_ebit_score = 1.0 / max(ev_ebit, 0.1)
-    fcf_score = fcf_yield          # already a decimal (e.g. 0.09 for 9%)
-    ptb_score = 1.0 / max(ptb, 0.1)
 
-    return ev_ebit_score * 0.4 + fcf_score * 0.4 + ptb_score * 0.2
+    Supports partial scoring: if some metrics are None, the score is
+    calculated from available metrics with re-normalised weights.
+    Returns None only if ALL three metrics are missing.
+    """
+    components: list[tuple[float, float]] = []  # (score_value, weight)
+
+    if ev_ebit is not None:
+        components.append((1.0 / max(ev_ebit, 0.1), 0.4))
+    if fcf_yield is not None:
+        components.append((fcf_yield, 0.4))
+    if ptb is not None:
+        components.append((1.0 / max(ptb, 0.1), 0.2))
+
+    if not components:
+        return None
+
+    total_weight = sum(w for _, w in components)
+    return sum(s * w for s, w in components) / total_weight * 1.0
 
 
 def run_klarman_screen(
@@ -173,8 +194,16 @@ def run_klarman_screen(
         if filter_results and not passes:
             continue
 
-        # Need all three core metrics to compute a score
-        if ev_ebit is None or fcf_yield is None or ptb is None:
+        # In filtered mode, require all three metrics for strict Klarman compliance.
+        # In unfiltered ("show all") mode, allow partial scores so users can
+        # see every stock ranked by whatever metrics are available.
+        if filter_results and (ev_ebit is None or fcf_yield is None or ptb is None):
+            continue
+
+        score = score_candidate(ev_ebit, fcf_yield, ptb)
+
+        # Skip only if we have zero calculable metrics
+        if score is None:
             continue
 
         results.append({
@@ -182,13 +211,13 @@ def run_klarman_screen(
             "name": data.get("name", ticker),
             "price": data.get("price"),
             "market_cap": data.get("market_cap"),
-            "ev_ebit": round(ev_ebit, 2),
-            "fcf_yield_pct": round(fcf_yield * 100.0, 2),
-            "price_tangible_book": round(ptb, 2),
+            "ev_ebit": round(ev_ebit, 2) if ev_ebit is not None else None,
+            "fcf_yield_pct": round(fcf_yield * 100.0, 2) if fcf_yield is not None else None,
+            "price_tangible_book": round(ptb, 2) if ptb is not None else None,
             "net_debt_ebitda": round(net_debt_ebitda, 2) if net_debt_ebitda is not None else None,
             "sector": data.get("sector"),
             "industry": data.get("industry"),
-            "screen_score": round(score_candidate(ev_ebit, fcf_yield, ptb), 6),
+            "screen_score": round(score, 6),
             "passes_filter": passes,
         })
 
