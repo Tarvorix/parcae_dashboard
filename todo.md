@@ -100,4 +100,22 @@
 - [x] backend/main.py: added `universe` query param to `/watchlist` endpoint with validation
 - [x] All 84 screener + API tests passing (47 + 37)
 
+## Phase 12 — Fix Scoring Display & Add Russell 2000 (IN PROGRESS)
+
+### Problem
+- Screener shows no scores for any stock, even with "Show all scores" enabled
+- Root causes:
+  1. `screen.py:176-178` skips stocks if ANY of 3 metrics is None
+  2. `tangible_book_value` often returns None from yfinance for many companies
+  3. Wikipedia ticker scraping has no error handling — crashes silently
+  4. Klarman hard filters too strict for current market (P/TBV ≤ 1.2, FCF ≥ 7%)
+  5. No Russell 2000 universe option
+
+### Tasks
+- [x] Fix screen.py — allow partial scores from available metrics in unfiltered mode
+- [x] Fix yfinance_client.py — add tangible_book_value fallbacks + ticker scraping error handling
+- [x] Add Russell 2000 via iShares IWM ETF (ported from stocks repo)
+- [x] Update sidebar with Russell 2000 universe option
+- [x] Commit and push
+
 ## Total: 262/262 tests passing ✅

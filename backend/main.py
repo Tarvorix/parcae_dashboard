@@ -108,19 +108,19 @@ async def health():
 async def get_watchlist(
     top_n: int = Query(default=50, ge=1, le=500),
     filter_results: bool = Query(default=True, description="When False, return all scored stocks with a passes_filter column"),
-    universe: str = Query(default="sp500", description="Universe: sp500, sp400, sp600, or all (S&P 1500)"),
+    universe: str = Query(default="sp500", description="Universe: sp500, sp400, sp600, russell2000, or all (S&P 1500)"),
 ):
     """
     Run the Klarman screen against the selected universe and return the top N
     candidates ranked by composite screen score.
 
     Universe options: sp500 (default), sp400 (Mid-Cap), sp600 (Small-Cap),
-    all (S&P 1500 combined).
+    russell2000 (Russell 2000 via iShares IWM), all (S&P 1500 combined).
 
     Set filter_results=false to see scores for all stocks regardless of
     whether they pass the hard Klarman thresholds.
     """
-    if universe not in ("sp500", "sp400", "sp600", "all"):
+    if universe not in ("sp500", "sp400", "sp600", "russell2000", "all"):
         universe = "sp500"
     df = run_klarman_screen(show_progress=False, filter_results=filter_results, universe=universe)
     if df.empty:

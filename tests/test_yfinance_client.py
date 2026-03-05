@@ -163,29 +163,36 @@ class TestGetDividendHistory:
 # ── get_sp500_tickers ─────────────────────────────────────────────────────────
 
 class TestGetSp500Tickers:
-    @patch("backend.data.yfinance_client.pd.read_html")
-    def test_returns_list_of_strings(self, mock_read_html):
-        df = pd.DataFrame({"Symbol": ["AAPL", "MSFT", "BRK.B", "BF.B"]})
-        mock_read_html.return_value = [df]
+    @patch("backend.data.yfinance_client._scrape_sp_tickers")
+    def test_returns_list_of_strings(self, mock_scrape):
+        mock_scrape.return_value = ["AAPL", "MSFT", "BRK-B", "BF-B"]
 
         result = get_sp500_tickers()
         assert isinstance(result, list)
         assert all(isinstance(t, str) for t in result)
 
-    @patch("backend.data.yfinance_client.pd.read_html")
-    def test_dots_replaced_with_dashes(self, mock_read_html):
-        df = pd.DataFrame({"Symbol": ["BRK.B", "BF.B"]})
-        mock_read_html.return_value = [df]
+    @patch("backend.data.yfinance_client._scrape_sp_tickers")
+    def test_dots_replaced_with_dashes(self, mock_scrape):
+        mock_scrape.return_value = ["BRK-B", "BF-B"]
 
         result = get_sp500_tickers()
         assert "BRK-B" in result
         assert "BF-B" in result
 
-    @patch("backend.data.yfinance_client.pd.read_html")
-    def test_correct_count(self, mock_read_html):
+    @patch("backend.data.yfinance_client._scrape_sp_tickers")
+    def test_correct_count(self, mock_scrape):
         symbols = [f"SYM{i}" for i in range(503)]
-        df = pd.DataFrame({"Symbol": symbols})
-        mock_read_html.return_value = [df]
+        mock_scrape.return_value = symbols
 
         result = get_sp500_tickers()
         assert len(result) == 503
+
+    @patch("backend.data.yfinance_client._scrape_sp_tickers")
+    def test_fallback_on_scrape_failure(self, mock_scrape):
+        """When Wikipedia scraping fails, returns the hardcoded fallback list."""
+        mock_scrape.side_effect = Exception("Network error")
+
+        result = get_sp500_tickers()
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert "AAPL" in result
