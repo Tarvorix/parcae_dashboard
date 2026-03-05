@@ -81,4 +81,10 @@
 - [x] tests/test_edgar_client.py: updated 5-year test → 3-year threshold, added test for 3-year data
 - [x] tests/test_api.py: updated EDGAR failure test for fallback behavior, added fallback success test
 
+## Phase 9 — Mobile Sidebar Fix ✅ COMPLETE
+- [x] streamlit_ui/theme.py: fixed header background from transparent → #030712 so sidebar toggle is visible
+- [x] streamlit_ui/theme.py: replaced blanket `[data-testid="stToolbar"] {display: none}` with targeted hide that preserves sidebar toggle
+- [x] streamlit_ui/theme.py: added explicit CSS to force sidebar hamburger button visible + tappable on mobile (44px min touch target)
+- [x] streamlit_ui/sidebar.py: wrapped ticker search in `st.form(clear_on_submit=True)` so input clears after submission, allowing sequential analyses
+
 ## Total: 262/262 tests passing ✅
