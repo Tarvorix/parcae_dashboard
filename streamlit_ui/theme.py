@@ -17,6 +17,8 @@ COLORS = {
     "cyan": "#06b6d4",
     "white": "#ffffff",
     "gray_50": "#f9fafb",
+    "gray_200": "#e5e7eb",
+    "gray_300": "#d1d5db",
     "gray_400": "#9ca3af",
     "gray_500": "#6b7280",
     "gray_600": "#4b5563",
@@ -25,6 +27,9 @@ COLORS = {
     "gray_900": "#111827",
     "gray_950": "#030712",
 }
+
+# Plotly template name used across all charts
+PLOTLY_TEMPLATE = "plotly_dark"
 
 
 def inject_custom_css():
