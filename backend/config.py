@@ -28,6 +28,17 @@ class KlarmanThresholds:
     # ── Histogram bucketing ───────────────────────────────────────────────────
     histogram_bins: int = 200          # Max buckets sent to frontend
 
+    # ── EPV / NCAV settings ────────────────────────────────────────────────
+    default_cost_of_equity: float = 0.10   # 10% baseline cost of equity
+    default_cost_of_debt: float = 0.05     # 5% baseline cost of debt
+    default_tax_rate: float = 0.21         # US corporate rate
+
+    # ── Quality score thresholds ───────────────────────────────────────────
+    min_piotroski_f_score: int = 5                   # F >= 5 is decent quality
+    altman_z_safe_threshold: float = 2.99            # Above = safe
+    altman_z_distress_threshold: float = 1.81        # Below = distress
+    beneish_manipulation_threshold: float = -1.78    # Above = likely manipulator
+
 
 # Required by SEC EDGAR — override via environment variable
 SEC_IDENTITY: str = os.environ.get(

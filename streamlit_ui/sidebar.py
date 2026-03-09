@@ -175,11 +175,39 @@ def render_sidebar():
                 st.session_state.selected_ticker = None
                 st.rerun()
 
+        # ── Backtest controls ──────────────────────────────────────────
+        st.markdown(
+            f"<span style='font-size:0.7rem;color:{COLORS['gray_400']};text-transform:uppercase;letter-spacing:0.05em;font-weight:600;'>Backtest</span>",
+            unsafe_allow_html=True,
+        )
+
+        bt_years = st.slider("Years", min_value=1, max_value=20, value=10, key="bt_years")
+        bt_top_n = st.slider("Top N", min_value=2, max_value=50, value=10, key="bt_top_n")
+        bt_weighting = st.radio(
+            "Weighting",
+            options=["Equal", "Score"],
+            index=0,
+            key="bt_weighting",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+
+        if st.button("Run Backtest", key="run_backtest_btn", use_container_width=True):
+            st.session_state.run_backtest = True
+            st.session_state.bt_config = {
+                "years": bt_years,
+                "top_n": bt_top_n,
+                "weighting": bt_weighting.lower(),
+                "universe": universe,
+            }
+
+        st.divider()
+
         # ── Portfolio risk button ────────────────────────────────────────
         analyzed = st.session_state.get("analysis_tickers", [])
         if len(analyzed) >= 2:
             if st.button(
-                f"📊 Portfolio Risk ({len(analyzed)} positions)",
+                f"Portfolio Risk ({len(analyzed)} positions)",
                 key="portfolio_risk_btn",
                 use_container_width=True,
             ):

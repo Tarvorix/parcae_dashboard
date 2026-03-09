@@ -10,7 +10,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean, DateTime, Float, ForeignKey,
-    Integer, String, Text,
+    Integer, JSON, String, Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -46,6 +46,16 @@ class WatchlistEntry(Base):
     prob_undervalued: Mapped[Optional[float]] = mapped_column(Float)
     p25_value_cents: Mapped[Optional[int]] = mapped_column(Integer)
     p50_value_cents: Mapped[Optional[int]] = mapped_column(Integer)
+
+    # Valuation anchors (populated after analysis)
+    epv_per_share_cents: Mapped[Optional[int]] = mapped_column(Integer)
+    ncav_per_share_cents: Mapped[Optional[int]] = mapped_column(Integer)
+
+    # Quality & distress scores (populated after analysis)
+    piotroski_f_score: Mapped[Optional[int]] = mapped_column(Integer)
+    altman_z_score: Mapped[Optional[float]] = mapped_column(Float)
+    altman_zone: Mapped[Optional[str]] = mapped_column(String(16))
+    beneish_m_score: Mapped[Optional[float]] = mapped_column(Float)
 
     last_screened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_analyzed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -137,3 +147,33 @@ class CatalystObservation(Base):
 
     # Relationships
     catalyst: Mapped["CatalystRecord"] = relationship("CatalystRecord", back_populates="observations")
+
+
+# ── Backtest result ──────────────────────────────────────────────────────────
+
+class BacktestResult(Base):
+    __tablename__ = "backtest_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    universe: Mapped[str] = mapped_column(String(16), nullable=False)
+    years: Mapped[int] = mapped_column(Integer, nullable=False)
+    top_n: Mapped[int] = mapped_column(Integer, nullable=False)
+    weighting: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    # Portfolio metrics
+    cagr: Mapped[Optional[float]] = mapped_column(Float)
+    total_return: Mapped[Optional[float]] = mapped_column(Float)
+    max_drawdown: Mapped[Optional[float]] = mapped_column(Float)
+    sharpe: Mapped[Optional[float]] = mapped_column(Float)
+    calmar: Mapped[Optional[float]] = mapped_column(Float)
+    win_rate: Mapped[Optional[float]] = mapped_column(Float)
+
+    # Benchmark metrics
+    benchmark_cagr: Mapped[Optional[float]] = mapped_column(Float)
+    alpha: Mapped[Optional[float]] = mapped_column(Float)
+
+    # Tickers held + full result JSON
+    tickers_held: Mapped[Optional[str]] = mapped_column(Text)     # comma-separated
+    result_json: Mapped[Optional[str]] = mapped_column(Text)      # full JSON blob
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

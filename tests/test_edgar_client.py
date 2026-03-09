@@ -41,6 +41,17 @@ def make_mock_filing(
     ni: float = 50_000_000,
     cfo: float = 70_000_000,
     capex: float = 20_000_000,
+    total_assets: float = 800_000_000,
+    total_liabilities: float = 400_000_000,
+    long_term_debt: float = 200_000_000,
+    current_assets: float = 300_000_000,
+    current_liabilities: float = 150_000_000,
+    shares_outstanding: float = 10_000_000,
+    gross_profit: float = 200_000_000,
+    depreciation: float = 15_000_000,
+    sga: float = 80_000_000,
+    receivables: float = 60_000_000,
+    ppe_net: float = 250_000_000,
 ) -> MagicMock:
     """Construct a mock 10-K filing with financials (edgartools 5.x API)."""
     filing = MagicMock()
@@ -48,11 +59,25 @@ def make_mock_filing(
     inc_df = _make_statement_df({
         "Revenues": rev,
         "NetIncomeLoss": ni,
+        "GrossProfit": gross_profit,
+        "SellingGeneralAndAdministrativeExpense": sga,
     })
 
     cf_df = _make_statement_df({
         "NetCashProvidedByUsedInOperatingActivities": cfo,
         "PaymentsToAcquirePropertyPlantAndEquipment": capex,
+        "DepreciationDepletionAndAmortization": depreciation,
+    })
+
+    bs_df = _make_statement_df({
+        "Assets": total_assets,
+        "Liabilities": total_liabilities,
+        "LongTermDebtNoncurrent": long_term_debt,
+        "AssetsCurrent": current_assets,
+        "LiabilitiesCurrent": current_liabilities,
+        "CommonStockSharesOutstanding": shares_outstanding,
+        "AccountsReceivableNetCurrent": receivables,
+        "PropertyPlantAndEquipmentNet": ppe_net,
     })
 
     income_stmt = MagicMock()
@@ -61,9 +86,13 @@ def make_mock_filing(
     cf_stmt = MagicMock()
     cf_stmt.to_dataframe.return_value = cf_df
 
+    bs_stmt = MagicMock()
+    bs_stmt.to_dataframe.return_value = bs_df
+
     tenk = MagicMock()
     tenk.income_statement = income_stmt
     tenk.cash_flow_statement = cf_stmt
+    tenk.balance_sheet = bs_stmt
 
     filing.data_object.return_value = tenk
     return filing
@@ -96,7 +125,14 @@ class TestGet10YrFinancials:
         result = get_10yr_financials("AAPL")
 
         assert result is not None
-        assert set(result.keys()) == {"revenues", "net_incomes", "fcfs", "margins", "capex"}
+        expected_keys = {
+            "revenues", "net_incomes", "fcfs", "margins", "capex",
+            "total_assets", "total_liabilities", "long_term_debt",
+            "current_assets", "current_liabilities", "shares_outstanding_hist",
+            "gross_profits", "depreciation", "sga_expenses", "receivables",
+            "ppe_net", "cfo_list",
+        }
+        assert set(result.keys()) == expected_keys
 
     @patch("backend.data.edgar_client.Company")
     def test_all_lists_same_length(self, mock_company_cls):
@@ -197,3 +233,45 @@ class TestGet10YrFinancials:
         revs = result["revenues"]
         # Our synthetic data has increasing revenues; reversed list should be ascending
         assert revs == sorted(revs), "Expected chronological (ascending) order"
+
+    @patch("backend.data.edgar_client.Company")
+    def test_balance_sheet_keys_present(self, mock_company_cls):
+        mock_company = MagicMock()
+        mock_company.get_filings.return_value.head.return_value = make_10_filings()
+        mock_company_cls.return_value = mock_company
+
+        from backend.data.edgar_client import get_10yr_financials
+        result = get_10yr_financials("AAPL")
+
+        bs_keys = {
+            "total_assets", "total_liabilities", "long_term_debt",
+            "current_assets", "current_liabilities", "shares_outstanding_hist",
+            "gross_profits", "depreciation", "sga_expenses", "receivables",
+            "ppe_net", "cfo_list",
+        }
+        assert bs_keys.issubset(result.keys())
+
+    @patch("backend.data.edgar_client.Company")
+    def test_balance_sheet_lists_same_length_as_revenues(self, mock_company_cls):
+        mock_company = MagicMock()
+        mock_company.get_filings.return_value.head.return_value = make_10_filings()
+        mock_company_cls.return_value = mock_company
+
+        from backend.data.edgar_client import get_10yr_financials
+        result = get_10yr_financials("AAPL")
+
+        n = len(result["revenues"])
+        for key in ["total_assets", "total_liabilities", "cfo_list", "gross_profits"]:
+            assert len(result[key]) == n, f"{key} length {len(result[key])} != revenues length {n}"
+
+    @patch("backend.data.edgar_client.Company")
+    def test_total_assets_values_extracted(self, mock_company_cls):
+        mock_company = MagicMock()
+        mock_company.get_filings.return_value.head.return_value = make_10_filings()
+        mock_company_cls.return_value = mock_company
+
+        from backend.data.edgar_client import get_10yr_financials
+        result = get_10yr_financials("AAPL")
+
+        # Default make_mock_filing has total_assets=800M
+        assert all(v == 800_000_000 for v in result["total_assets"])

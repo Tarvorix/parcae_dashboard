@@ -30,6 +30,13 @@ def get_fundamentals(ticker: str) -> Optional[dict]:
             if ptb_ratio and ptb_ratio > 0 and price:
                 tangible_bv = price / ptb_ratio
 
+        # Balance sheet fields for quality scores, EPV, and NCAV
+        current_assets = info.get("totalCurrentAssets")
+        current_liabilities = info.get("totalCurrentLiabilities")
+        working_capital = None
+        if current_assets is not None and current_liabilities is not None:
+            working_capital = current_assets - current_liabilities
+
         return {
             "ticker": ticker,
             "name": info.get("longName", ticker),
@@ -49,6 +56,20 @@ def get_fundamentals(ticker: str) -> Optional[dict]:
             "current_ratio": info.get("currentRatio"),
             "sector": info.get("sector"),
             "industry": info.get("industry"),
+            # Balance sheet & quality data
+            "total_assets": info.get("totalAssets"),
+            "total_liabilities": info.get("totalLiab"),
+            "current_assets": current_assets,
+            "current_liabilities": current_liabilities,
+            "working_capital": working_capital,
+            "retained_earnings": info.get("retainedEarnings"),
+            "gross_margins": info.get("grossMargins"),
+            "operating_cashflow": info.get("operatingCashflow"),
+            "net_income": info.get("netIncomeToCommon"),
+            "long_term_debt": info.get("longTermDebt"),
+            "short_percent_of_float": info.get("shortPercentOfFloat"),
+            "short_ratio": info.get("shortRatio"),
+            "tax_rate": info.get("effectiveTaxRate"),
         }
     except Exception:
         return None
@@ -114,6 +135,21 @@ def build_fallback_edgar_data(yf_data: dict) -> Optional[dict]:
         "fcfs": fcfs,
         "margins": margins_list,
         "capex": capex,
+        # Balance sheet fields — not available from trailing fundamentals.
+        # None placeholders allow downstream quality/scoring modules to
+        # degrade gracefully when only yfinance fallback data is available.
+        "total_assets": [None] * n_years,
+        "total_liabilities": [None] * n_years,
+        "long_term_debt": [None] * n_years,
+        "current_assets": [None] * n_years,
+        "current_liabilities": [None] * n_years,
+        "shares_outstanding_hist": [None] * n_years,
+        "gross_profits": [None] * n_years,
+        "depreciation": [None] * n_years,
+        "sga_expenses": [None] * n_years,
+        "receivables": [None] * n_years,
+        "ppe_net": [None] * n_years,
+        "cfo_list": [None] * n_years,
     }
 
 

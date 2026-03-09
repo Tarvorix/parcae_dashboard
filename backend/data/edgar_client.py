@@ -62,6 +62,68 @@ _CAPEX_CONCEPTS = [
     "PaymentsToAcquireOtherPropertyPlantAndEquipment",
 ]
 
+# ── Balance sheet concept chains (for quality scores, EPV, NCAV) ─────────
+
+_TOTAL_ASSETS_CONCEPTS = [
+    "Assets",
+]
+
+_TOTAL_LIABILITIES_CONCEPTS = [
+    "Liabilities",
+]
+
+_LONG_TERM_DEBT_CONCEPTS = [
+    "LongTermDebtNoncurrent",
+    "LongTermDebt",
+    "LongTermDebtAndCapitalLeaseObligations",
+    "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities",
+]
+
+_CURRENT_ASSETS_CONCEPTS = [
+    "AssetsCurrent",
+]
+
+_CURRENT_LIABILITIES_CONCEPTS = [
+    "LiabilitiesCurrent",
+]
+
+_SHARES_OUTSTANDING_CONCEPTS = [
+    "CommonStockSharesOutstanding",
+    "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+    "WeightedAverageNumberOfSharesOutstandingBasic",
+    "CommonStockSharesIssued",
+]
+
+_GROSS_PROFIT_CONCEPTS = [
+    "GrossProfit",
+]
+
+_DEPRECIATION_CONCEPTS = [
+    "DepreciationDepletionAndAmortization",
+    "Depreciation",
+    "DepreciationAndAmortization",
+    "DepreciationAmortizationAndAccretionNet",
+]
+
+_SGA_CONCEPTS = [
+    "SellingGeneralAndAdministrativeExpense",
+    "GeneralAndAdministrativeExpense",
+    "SellingAndMarketingExpense",
+]
+
+_RECEIVABLES_CONCEPTS = [
+    "AccountsReceivableNetCurrent",
+    "AccountsReceivableNet",
+    "ReceivablesNetCurrent",
+    "AccountsNotesAndLoansReceivableNetCurrent",
+]
+
+_PPE_CONCEPTS = [
+    "PropertyPlantAndEquipmentNet",
+    "PropertyPlantAndEquipmentGross",
+    "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization",
+]
+
 # Minimum number of annual filings needed for distribution fitting.
 # 3 years provides enough data points (2+ growth rates) for bear/base/bull.
 MIN_YEARS_REQUIRED = 3
@@ -105,6 +167,20 @@ def get_10yr_financials(ticker: str) -> Optional[dict]:
         fcfs: list[float] = []
         margins: list[float] = []
         capex_list: list[float] = []
+        cfo_values: list[float] = []
+
+        # Balance sheet lists — may contain None where XBRL concepts are missing
+        total_assets_list: list = []
+        total_liabilities_list: list = []
+        long_term_debt_list: list = []
+        current_assets_list: list = []
+        current_liabilities_list: list = []
+        shares_list: list = []
+        gross_profit_list: list = []
+        depreciation_list: list = []
+        sga_list: list = []
+        receivables_list: list = []
+        ppe_list: list = []
 
         for filing in filings:
             try:
@@ -156,6 +232,58 @@ def get_10yr_financials(ticker: str) -> Optional[dict]:
                     fcfs.append(fcf)
                     margins.append(ni_f / rev_f if rev_f > 0 else 0.0)
                     capex_list.append(capex_f)
+                    cfo_values.append(cfo_f)
+
+                    # ── Balance sheet extraction (optional — None if not found) ──
+                    # Try to get the balance sheet statement
+                    bs_ta = None
+                    bs_tl = None
+                    bs_ltd = None
+                    bs_ca = None
+                    bs_cl = None
+                    bs_shares = None
+                    bs_gp = None
+                    bs_dep = None
+                    bs_sga = None
+                    bs_recv = None
+                    bs_ppe = None
+
+                    try:
+                        bs_stmt = tenk.balance_sheet
+                        if bs_stmt is not None:
+                            bs_df = bs_stmt.to_dataframe()
+                            bs_date_cols = [c for c in bs_df.columns if c[:2] == "20"]
+                            if bs_date_cols:
+                                bs_date = bs_date_cols[0]
+                                bs_ta = _lookup_first(bs_df, _TOTAL_ASSETS_CONCEPTS, bs_date)
+                                bs_tl = _lookup_first(bs_df, _TOTAL_LIABILITIES_CONCEPTS, bs_date)
+                                bs_ltd = _lookup_first(bs_df, _LONG_TERM_DEBT_CONCEPTS, bs_date)
+                                bs_ca = _lookup_first(bs_df, _CURRENT_ASSETS_CONCEPTS, bs_date)
+                                bs_cl = _lookup_first(bs_df, _CURRENT_LIABILITIES_CONCEPTS, bs_date)
+                                bs_shares = _lookup_first(bs_df, _SHARES_OUTSTANDING_CONCEPTS, bs_date)
+                                bs_recv = _lookup_first(bs_df, _RECEIVABLES_CONCEPTS, bs_date)
+                                bs_ppe = _lookup_first(bs_df, _PPE_CONCEPTS, bs_date)
+                    except Exception:
+                        pass
+
+                    # Gross profit and SGA from income statement
+                    bs_gp = _lookup_first(inc_df, _GROSS_PROFIT_CONCEPTS, primary_date)
+                    bs_sga = _lookup_first(inc_df, _SGA_CONCEPTS, primary_date)
+
+                    # Depreciation from cash flow statement
+                    bs_dep = _lookup_first(cf_df, _DEPRECIATION_CONCEPTS, cf_primary_date)
+
+                    total_assets_list.append(bs_ta)
+                    total_liabilities_list.append(bs_tl)
+                    long_term_debt_list.append(bs_ltd)
+                    current_assets_list.append(bs_ca)
+                    current_liabilities_list.append(bs_cl)
+                    shares_list.append(bs_shares)
+                    gross_profit_list.append(bs_gp)
+                    depreciation_list.append(bs_dep)
+                    sga_list.append(bs_sga)
+                    receivables_list.append(bs_recv)
+                    ppe_list.append(bs_ppe)
             except Exception:
                 continue
 
@@ -169,6 +297,19 @@ def get_10yr_financials(ticker: str) -> Optional[dict]:
             "fcfs": list(reversed(fcfs)),
             "margins": list(reversed(margins)),
             "capex": list(reversed(capex_list)),
+            # Balance sheet data (may contain None values)
+            "total_assets": list(reversed(total_assets_list)),
+            "total_liabilities": list(reversed(total_liabilities_list)),
+            "long_term_debt": list(reversed(long_term_debt_list)),
+            "current_assets": list(reversed(current_assets_list)),
+            "current_liabilities": list(reversed(current_liabilities_list)),
+            "shares_outstanding_hist": list(reversed(shares_list)),
+            "gross_profits": list(reversed(gross_profit_list)),
+            "depreciation": list(reversed(depreciation_list)),
+            "sga_expenses": list(reversed(sga_list)),
+            "receivables": list(reversed(receivables_list)),
+            "ppe_net": list(reversed(ppe_list)),
+            "cfo_list": list(reversed(cfo_values)),
         }
 
     except Exception:

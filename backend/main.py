@@ -28,6 +28,7 @@ from backend.catalyst.particle_filter import (
     PositionCatalystTracker,
 )
 from backend.data.edgar_client import get_10yr_financials
+from backend.data.insider_client import get_flow_signals
 from backend.data.yfinance_client import get_fundamentals, get_price_history, build_fallback_edgar_data
 from backend.db.database import get_db, init_db
 from backend.db.models import (
@@ -40,6 +41,9 @@ from backend.engine.distributions import build_distributions_from_history
 from backend.engine.kelly import calculate_position_size
 from backend.engine.margin_of_safety import calculate_margin_of_safety
 from backend.engine.monte_carlo import run_dcf_simulation
+from backend.engine.valuation_anchors import calculate_valuation_anchors
+from backend.engine.quality_scores import calculate_quality_scores
+from backend.backtest.engine import run_backtest
 from backend.portfolio.copula import gaussian_copula_portfolio_var
 from backend.portfolio.tail_risk import calculate_tail_risk_summary
 from backend.screener.screen import run_klarman_screen
@@ -171,6 +175,10 @@ async def analyze_ticker(
         current_price,
     )
 
+    valuation_anchors = calculate_valuation_anchors(yf_data, edgar_data)
+    quality_scores = calculate_quality_scores(yf_data, edgar_data)
+    flow_signals = get_flow_signals(ticker, yf_data)
+
     return {
         "ticker": ticker,
         "name": yf_data.get("name"),
@@ -179,6 +187,9 @@ async def analyze_ticker(
         "distributions": distributions,
         "margin_of_safety": mos,
         "kelly_sizing": kelly,
+        "valuation_anchors": valuation_anchors,
+        "quality_scores": quality_scores,
+        "flow_signals": flow_signals,
     }
 
 
@@ -429,3 +440,48 @@ async def record_catalyst_observation(
         "n_observations": catalyst_record.n_observations,
         "distribution": pf.get_probability_distribution(),
     }
+
+
+# ── Backtesting ──────────────────────────────────────────────────────────────
+
+@app.post("/backtest", tags=["Backtest"])
+async def run_backtest_endpoint(
+    years: int = Query(default=10, ge=1, le=20),
+    top_n: int = Query(default=10, ge=2, le=50),
+    weighting: str = Query(default="equal", description="Weighting: equal or score"),
+    initial_capital: float = Query(default=100_000, ge=1_000),
+    universe: str = Query(default="sp500", description="Universe for screener"),
+):
+    """
+    Run a walk-forward backtest using the Klarman screener rankings
+    and historical monthly prices.
+
+    1. Runs the screener to get ranked tickers
+    2. Fetches historical monthly prices for top N tickers + SPY benchmark
+    3. Simulates equal-weight or score-weighted portfolio with monthly data
+    4. Returns performance metrics vs SPY benchmark
+    """
+    if weighting not in ("equal", "score"):
+        weighting = "equal"
+    if universe not in ("sp500", "sp400", "sp600", "russell2000", "all"):
+        universe = "sp500"
+
+    # Run screener to get ranked tickers
+    df = run_klarman_screen(show_progress=False, filter_results=False, universe=universe)
+    if df.empty:
+        raise HTTPException(status_code=422, detail="Screener returned no results")
+
+    ranked_tickers = df["ticker"].tolist()
+
+    try:
+        result = run_backtest(
+            ranked_tickers=ranked_tickers,
+            years=years,
+            top_n=top_n,
+            weighting=weighting,
+            initial_capital=initial_capital,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return result

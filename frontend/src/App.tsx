@@ -24,6 +24,9 @@ import {
 
 import ValueDistributionChart from "./components/ValueDistributionChart";
 import DownsidePanel from "./components/DownsidePanel";
+import ValuationAnchors from "./components/ValuationAnchors";
+import QualityPanel from "./components/QualityPanel";
+import FlowSignals from "./components/FlowSignals";
 import FCFProjections from "./components/FCFProjections";
 import DecisionMatrix from "./components/DecisionMatrix";
 import Watchlist from "./components/Watchlist";
@@ -35,11 +38,14 @@ import type {
   WatchlistCandidate,
 } from "./types";
 
-type AnalysisTab = "distribution" | "downside" | "fcf" | "decision";
+type AnalysisTab = "distribution" | "downside" | "valuation" | "quality" | "flow" | "fcf" | "decision";
 
 const ANALYSIS_TABS: { id: AnalysisTab; label: string }[] = [
   { id: "distribution", label: "Value Distribution" },
   { id: "downside", label: "Downside / Klarman" },
+  { id: "valuation", label: "Valuation Anchors" },
+  { id: "quality", label: "Quality / Distress" },
+  { id: "flow", label: "Flow Signals" },
   { id: "fcf", label: "FCF Projections" },
   { id: "decision", label: "Decision Matrix" },
 ];
@@ -424,6 +430,18 @@ export default function App() {
                     <ValueDistributionChart marginOfSafety={analysis.margin_of_safety} />
                   )}
                   {activeTab === "downside" && <DownsidePanel analysis={analysis} />}
+                  {activeTab === "valuation" && (
+                    <ValuationAnchors
+                      anchors={analysis.valuation_anchors}
+                      mos={analysis.margin_of_safety}
+                    />
+                  )}
+                  {activeTab === "quality" && (
+                    <QualityPanel scores={analysis.quality_scores} />
+                  )}
+                  {activeTab === "flow" && (
+                    <FlowSignals signals={analysis.flow_signals} />
+                  )}
                   {activeTab === "fcf" && (
                     <FCFProjections distributions={analysis.distributions} />
                   )}

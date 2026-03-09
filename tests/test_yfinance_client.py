@@ -36,6 +36,19 @@ def make_mock_info(overrides: dict | None = None) -> dict:
         "currentRatio": 1.8,
         "sector": "Technology",
         "industry": "Software",
+        # Balance sheet & quality data
+        "totalAssets": 800_000_000,
+        "totalLiab": 400_000_000,
+        "totalCurrentAssets": 300_000_000,
+        "totalCurrentLiabilities": 150_000_000,
+        "retainedEarnings": 250_000_000,
+        "grossMargins": 0.45,
+        "operatingCashflow": 110_000_000,
+        "netIncomeToCommon": 80_000_000,
+        "longTermDebt": 180_000_000,
+        "shortPercentOfFloat": 0.03,
+        "shortRatio": 2.5,
+        "effectiveTaxRate": 0.21,
     }
     if overrides:
         info.update(overrides)
@@ -113,6 +126,40 @@ class TestGetFundamentals:
         result = get_fundamentals("TEST")
         assert result is not None
         assert result["price"] == 88.0
+
+    @patch("backend.data.yfinance_client.yf.Ticker")
+    def test_balance_sheet_keys_present(self, mock_ticker_cls):
+        mock_ticker = MagicMock()
+        mock_ticker.info = make_mock_info()
+        mock_ticker_cls.return_value = mock_ticker
+
+        result = get_fundamentals("TEST")
+        balance_keys = {
+            "total_assets", "total_liabilities", "current_assets",
+            "current_liabilities", "working_capital", "retained_earnings",
+            "gross_margins", "operating_cashflow", "net_income",
+            "long_term_debt", "short_percent_of_float", "short_ratio",
+            "tax_rate",
+        }
+        assert balance_keys.issubset(result.keys())
+
+    @patch("backend.data.yfinance_client.yf.Ticker")
+    def test_working_capital_computed(self, mock_ticker_cls):
+        mock_ticker = MagicMock()
+        mock_ticker.info = make_mock_info()
+        mock_ticker_cls.return_value = mock_ticker
+
+        result = get_fundamentals("TEST")
+        assert result["working_capital"] == 300_000_000 - 150_000_000
+
+    @patch("backend.data.yfinance_client.yf.Ticker")
+    def test_working_capital_none_when_missing(self, mock_ticker_cls):
+        mock_ticker = MagicMock()
+        mock_ticker.info = make_mock_info({"totalCurrentAssets": None})
+        mock_ticker_cls.return_value = mock_ticker
+
+        result = get_fundamentals("TEST")
+        assert result["working_capital"] is None
 
 
 # ── get_price_history ─────────────────────────────────────────────────────────

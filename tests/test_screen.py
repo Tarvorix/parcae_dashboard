@@ -55,6 +55,11 @@ def make_data(overrides: dict | None = None) -> dict:
         "cash": 50_000_000,
         "sector": "Industrials",
         "industry": "Manufacturing",
+        # Altman Z-Score fields
+        "total_assets": 500_000_000,
+        "total_liabilities": 200_000_000,
+        "working_capital": 100_000_000,
+        "retained_earnings": 150_000_000,
     }
     if overrides:
         base.update(overrides)
@@ -336,6 +341,7 @@ class TestRunKlarmanScreen:
         required = {
             "ticker", "name", "price", "market_cap", "ev_ebit",
             "fcf_yield_pct", "price_tangible_book", "sector", "screen_score",
+            "altman_z_score", "altman_zone",
         }
         assert required.issubset(df.columns)
 
@@ -380,3 +386,42 @@ class TestRunKlarmanScreen:
         df = run_klarman_screen(tickers=real_tickers, show_progress=False)
         for ticker in real_tickers:
             assert ticker not in df["ticker"].values, f"{ticker} should not pass filters"
+
+    @patch("backend.screener.screen.get_fundamentals", side_effect=fake_get_fundamentals)
+    def test_altman_z_score_computed_for_passing_candidates(self, _mock):
+        """Passing candidates with complete data should have Altman Z-Score computed."""
+        df = run_klarman_screen(tickers=["DEEPV", "VALUE"], show_progress=False)
+        # Both have all required fields for Altman Z-Score
+        assert df["altman_z_score"].notna().all()
+
+    @patch("backend.screener.screen.get_fundamentals", side_effect=fake_get_fundamentals)
+    def test_altman_zone_computed_for_passing_candidates(self, _mock):
+        """Passing candidates should have Altman zone classification."""
+        df = run_klarman_screen(tickers=["DEEPV", "VALUE"], show_progress=False)
+        for zone in df["altman_zone"]:
+            assert zone in ("Safe", "Grey", "Distress")
+
+    @patch("backend.screener.screen.get_fundamentals", side_effect=fake_get_fundamentals)
+    def test_altman_columns_in_unfiltered_mode(self, _mock):
+        """Unfiltered mode should also include Altman columns."""
+        df = run_klarman_screen(
+            tickers=list(MOCK_UNIVERSE.keys()),
+            show_progress=False,
+            filter_results=False,
+        )
+        assert "altman_z_score" in df.columns
+        assert "altman_zone" in df.columns
+
+    @patch("backend.screener.screen.get_fundamentals")
+    def test_altman_none_when_total_assets_missing(self, mock_fn):
+        """Altman Z-Score should be None when total_assets is missing."""
+        data = make_data({"ticker": "NOASSETS", "total_assets": None})
+        mock_fn.side_effect = lambda t: data if t == "NOASSETS" else None
+        df = run_klarman_screen(
+            tickers=["NOASSETS"],
+            show_progress=False,
+            filter_results=False,
+        )
+        if not df.empty:
+            assert df.iloc[0]["altman_z_score"] is None or pd.isna(df.iloc[0]["altman_z_score"])
+            assert df.iloc[0]["altman_zone"] is None

@@ -6,6 +6,7 @@
 
 import type {
   AnalysisResult,
+  BacktestResult,
   CatalystEntry,
   ObservationResult,
   PortfolioTailRisk,
@@ -118,6 +119,25 @@ export async function recordCatalystObservation(
       }),
     }
   );
+}
+
+// ── Backtest ─────────────────────────────────────────────────────────────────
+
+export async function runBacktest(
+  years = 10,
+  topN = 10,
+  weighting: "equal" | "score" = "equal",
+  initialCapital = 100_000,
+  universe = "sp500"
+): Promise<BacktestResult> {
+  const params = new URLSearchParams({
+    years: String(years),
+    top_n: String(topN),
+    weighting,
+    initial_capital: String(initialCapital),
+    universe,
+  });
+  return request<BacktestResult>(`/backtest?${params}`, { method: "POST" });
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────

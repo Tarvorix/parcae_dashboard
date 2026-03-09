@@ -3,7 +3,7 @@ SQLAlchemy session management for SQLite (upgradeable to Postgres).
 """
 
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 DATABASE_URL = os.environ.get(
@@ -36,7 +36,34 @@ def get_db():
         db.close()
 
 
+def migrate_db() -> None:
+    """
+    Add new columns to existing tables that were created before the column existed.
+    Since we use create_all (not Alembic), new columns on existing tables
+    need explicit ALTER TABLE.
+    """
+    insp = inspect(engine)
+    if not insp.has_table("watchlist"):
+        return  # Table doesn't exist yet — create_all will handle it
+
+    existing_cols = {c["name"] for c in insp.get_columns("watchlist")}
+    new_cols = {
+        "piotroski_f_score": "INTEGER",
+        "altman_z_score": "REAL",
+        "altman_zone": "VARCHAR(16)",
+        "beneish_m_score": "REAL",
+        "epv_per_share_cents": "INTEGER",
+        "ncav_per_share_cents": "INTEGER",
+    }
+
+    with engine.begin() as conn:
+        for col, type_ in new_cols.items():
+            if col not in existing_cols:
+                conn.execute(text(f"ALTER TABLE watchlist ADD COLUMN {col} {type_}"))
+
+
 def init_db() -> None:
-    """Create all tables.  Call once at startup."""
+    """Create all tables and run migrations.  Call once at startup."""
     from backend.db import models  # noqa: F401 — import to register models
     Base.metadata.create_all(bind=engine)
+    migrate_db()

@@ -24,6 +24,10 @@ from backend.engine.distributions import build_distributions_from_history
 from backend.engine.monte_carlo import run_dcf_simulation
 from backend.engine.margin_of_safety import calculate_margin_of_safety
 from backend.engine.kelly import calculate_position_size
+from backend.engine.valuation_anchors import calculate_valuation_anchors
+from backend.engine.quality_scores import calculate_quality_scores
+from backend.backtest.engine import run_backtest as run_backtest_engine
+from backend.data.insider_client import get_flow_signals
 from backend.portfolio.copula import gaussian_copula_portfolio_var
 from backend.portfolio.tail_risk import calculate_tail_risk_summary
 
@@ -35,6 +39,10 @@ from streamlit_ui.downside_panel import render_downside_panel
 from streamlit_ui.fcf_projections import render_fcf_projections
 from streamlit_ui.decision_matrix import render_decision_matrix
 from streamlit_ui.portfolio_risk import render_portfolio_risk
+from streamlit_ui.valuation_anchors import render_valuation_anchors
+from streamlit_ui.quality_panel import render_quality_panel
+from streamlit_ui.flow_signals import render_flow_signals
+from streamlit_ui.backtest_view import render_backtest_view
 
 # ── Page config ──────────────────────────────────────────────────────────────
 
@@ -92,6 +100,10 @@ def analyze_ticker(ticker: str, portfolio_value: float) -> dict | None:
         current_price,
     )
 
+    valuation_anchors = calculate_valuation_anchors(yf_data, edgar_data)
+    quality_scores = calculate_quality_scores(yf_data, edgar_data)
+    flow_signals = get_flow_signals(ticker, yf_data)
+
     return {
         "ticker": ticker,
         "name": yf_data.get("name"),
@@ -100,6 +112,9 @@ def analyze_ticker(ticker: str, portfolio_value: float) -> dict | None:
         "distributions": distributions,
         "margin_of_safety": mos,
         "kelly_sizing": kelly,
+        "valuation_anchors": valuation_anchors,
+        "quality_scores": quality_scores,
+        "flow_signals": flow_signals,
     }
 
 
@@ -176,6 +191,48 @@ if st.session_state.get("show_portfolio_risk"):
                 st.warning("Could not compute portfolio risk — insufficient price history.")
 
         st.divider()
+
+# Backtest overlay
+if st.session_state.get("run_backtest"):
+    bt_config = st.session_state.get("bt_config", {})
+    with st.container():
+        col_title, col_close = st.columns([6, 1])
+        with col_title:
+            st.markdown(
+                f"<h3 style='color:{COLORS['blue']};margin:0;'>Walk-Forward Backtest</h3>",
+                unsafe_allow_html=True,
+            )
+        with col_close:
+            if st.button("✕ Close", key="close_backtest"):
+                st.session_state.run_backtest = False
+                st.rerun()
+
+        with st.spinner("Running screener + backtest…"):
+            try:
+                from backend.screener.screen import run_klarman_screen as _bt_screen
+                df = _bt_screen(
+                    show_progress=False,
+                    filter_results=False,
+                    universe=bt_config.get("universe", "sp500"),
+                )
+                if df.empty:
+                    st.error("Screener returned no results for backtest.")
+                else:
+                    ranked = df["ticker"].tolist()
+                    bt_result = run_backtest_engine(
+                        ranked_tickers=ranked,
+                        years=bt_config.get("years", 10),
+                        top_n=bt_config.get("top_n", 10),
+                        weighting=bt_config.get("weighting", "equal"),
+                        initial_capital=portfolio_value,
+                    )
+                    render_backtest_view(bt_result)
+            except ValueError as e:
+                st.error(f"Backtest failed: {e}")
+            except Exception as e:
+                st.error(f"Backtest error: {e}")
+
+    st.divider()
 
 # No ticker selected — show screener results on main screen
 if not selected_ticker:
@@ -266,9 +323,10 @@ else:
 
         st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
 
-        # ── 4-tab analysis ───────────────────────────────────────────────
-        tab1, tab2, tab3, tab4 = st.tabs(
-            ["Value Distribution", "Downside / Klarman", "FCF Projections", "Decision Matrix"]
+        # ── 7-tab analysis ───────────────────────────────────────────────
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+            ["Value Distribution", "Downside / Klarman", "Valuation Anchors",
+             "Quality / Distress", "Flow Signals", "FCF Projections", "Decision Matrix"]
         )
 
         with tab1:
@@ -278,7 +336,16 @@ else:
             render_downside_panel(analysis)
 
         with tab3:
-            render_fcf_projections(analysis["distributions"])
+            render_valuation_anchors(analysis.get("valuation_anchors", {}), mos)
 
         with tab4:
+            render_quality_panel(analysis.get("quality_scores", {}))
+
+        with tab5:
+            render_flow_signals(analysis.get("flow_signals", {}))
+
+        with tab6:
+            render_fcf_projections(analysis["distributions"])
+
+        with tab7:
             render_decision_matrix(kelly, mos, selected_ticker)

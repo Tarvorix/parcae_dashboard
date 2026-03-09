@@ -23,6 +23,7 @@ from backend.data.yfinance_client import (
     get_fundamentals,
 )
 from backend.config import KlarmanThresholds
+from backend.engine.quality_scores import calculate_altman_z_score
 
 config = KlarmanThresholds()
 
@@ -206,6 +207,11 @@ def run_klarman_screen(
         if score is None:
             continue
 
+        # Altman Z-Score (uses yfinance data only — fast enough for screening)
+        altman_result = calculate_altman_z_score(data)
+        altman_z = altman_result["z_score"] if altman_result else None
+        altman_zone = altman_result["zone"] if altman_result else None
+
         results.append({
             "ticker": ticker,
             "name": data.get("name", ticker),
@@ -215,6 +221,8 @@ def run_klarman_screen(
             "fcf_yield_pct": round(fcf_yield * 100.0, 2) if fcf_yield is not None else None,
             "price_tangible_book": round(ptb, 2) if ptb is not None else None,
             "net_debt_ebitda": round(net_debt_ebitda, 2) if net_debt_ebitda is not None else None,
+            "altman_z_score": round(altman_z, 4) if altman_z is not None else None,
+            "altman_zone": altman_zone,
             "sector": data.get("sector"),
             "industry": data.get("industry"),
             "screen_score": round(score, 6),
@@ -225,6 +233,7 @@ def run_klarman_screen(
         return pd.DataFrame(columns=[
             "ticker", "name", "price", "market_cap", "ev_ebit",
             "fcf_yield_pct", "price_tangible_book", "net_debt_ebitda",
+            "altman_z_score", "altman_zone",
             "sector", "industry", "screen_score", "passes_filter",
         ])
 

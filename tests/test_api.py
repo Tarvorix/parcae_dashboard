@@ -234,7 +234,9 @@ class TestAnalyzeTicker:
         r = client.get("/analyze/DEEPV")
         data = r.json()
         assert {"ticker", "name", "sector", "distributions",
-                "margin_of_safety", "kelly_sizing"}.issubset(data.keys())
+                "margin_of_safety", "kelly_sizing",
+                "valuation_anchors", "quality_scores",
+                "flow_signals"}.issubset(data.keys())
 
     @patch("backend.main.get_10yr_financials", return_value=MOCK_EDGAR_DATA)
     @patch("backend.main.get_fundamentals", return_value=MOCK_YF_DATA)
