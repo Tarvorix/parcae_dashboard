@@ -1,24 +1,79 @@
 import yfinance as yf
 import pandas as pd
+import time
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# ── Retry / rate-limit helpers ─────────────────────────────────────────────────
+
+_MAX_RETRIES = 3
+_RETRY_DELAYS = [1.0, 2.0, 4.0]  # exponential backoff
+
+
+def _fetch_info_with_retry(ticker: str) -> dict:
+    """
+    Fetch yfinance .info with retry logic for transient failures
+    (rate-limiting, network timeouts, empty responses).
+    Falls back to .fast_info for price/market_cap when .info is sparse.
+    """
+    stock = yf.Ticker(ticker)
+    info = {}
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            info = stock.info or {}
+            # yfinance sometimes returns a near-empty dict on rate-limit
+            # (just {"trailingPegRatio": None} or similar). Detect this.
+            if info.get("currentPrice") or info.get("regularMarketPrice") or info.get("totalRevenue"):
+                return info  # Got real data
+            # Sparse response — retry after delay
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+        except Exception as e:
+            logger.debug("yfinance .info attempt %d for %s failed: %s", attempt + 1, ticker, e)
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+
+    # After retries, try to patch in price/market_cap from fast_info
+    try:
+        fi = stock.fast_info
+        if not info.get("currentPrice") and not info.get("regularMarketPrice"):
+            last_price = getattr(fi, "last_price", None)
+            if last_price:
+                info["regularMarketPrice"] = last_price
+        if not info.get("marketCap"):
+            mc = getattr(fi, "market_cap", None)
+            if mc:
+                info["marketCap"] = mc
+    except Exception as e:
+        logger.debug("yfinance .fast_info fallback for %s failed: %s", ticker, e)
+
+    return info
 
 
 def get_fundamentals(ticker: str) -> Optional[dict]:
     """
     Pull current fundamentals needed for Klarman screening.
     Returns None if essential data is unavailable.
+
+    Uses retry logic and fast_info fallback to handle Yahoo Finance
+    rate-limiting and transient failures on cloud hosts.
     """
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
+        info = _fetch_info_with_retry(ticker)
 
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         market_cap = info.get("marketCap")
         enterprise_value = info.get("enterpriseValue")
         total_revenue = info.get("totalRevenue")
 
-        # Require at minimum a price and revenue to be useful
-        if not price or not total_revenue:
+        # Require at minimum a price to be useful.
+        # Revenue is preferred but we allow it to be missing in "show all" mode
+        # (the screener will just produce a partial score).
+        if not price:
+            logger.debug("No price for %s — skipping", ticker)
             return None
 
         # Tangible book value per share — try multiple yfinance fields
@@ -39,7 +94,7 @@ def get_fundamentals(ticker: str) -> Optional[dict]:
 
         return {
             "ticker": ticker,
-            "name": info.get("longName", ticker),
+            "name": info.get("longName") or info.get("shortName") or ticker,
             "price": price,
             "market_cap": market_cap,
             "enterprise_value": enterprise_value,
@@ -71,7 +126,8 @@ def get_fundamentals(ticker: str) -> Optional[dict]:
             "short_ratio": info.get("shortRatio"),
             "tax_rate": info.get("effectiveTaxRate"),
         }
-    except Exception:
+    except Exception as e:
+        logger.warning("get_fundamentals failed for %s: %s", ticker, e)
         return None
 
 

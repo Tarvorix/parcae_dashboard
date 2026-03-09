@@ -12,6 +12,7 @@ Klarman opportunities float to the top of the watchlist.
 """
 
 import pandas as pd
+import logging
 from tqdm import tqdm
 from typing import Optional
 
@@ -25,6 +26,7 @@ from backend.data.yfinance_client import (
 from backend.config import KlarmanThresholds
 from backend.engine.quality_scores import calculate_altman_z_score
 
+logger = logging.getLogger(__name__)
 config = KlarmanThresholds()
 
 # ── Universe options ─────────────────────────────────────────────────────────
@@ -158,6 +160,7 @@ def run_klarman_screen(
     show_progress: bool = True,
     filter_results: bool = True,
     universe: str = "sp500",
+    progress_callback=None,
 ) -> pd.DataFrame:
     """
     Run the Klarman screen against the supplied ticker list.
@@ -170,20 +173,36 @@ def run_klarman_screen(
     with calculable metrics are returned with a 'passes_filter' column
     indicating whether they meet the hard thresholds.
 
+    progress_callback: Optional callable(current_idx, total, ticker, status)
+        for real-time UI feedback (e.g. Streamlit progress bars).
+
     Returns a DataFrame of candidates ranked by composite screen score,
     best opportunities first.  Returns an empty DataFrame if none qualify.
     """
     if tickers is None:
         tickers = get_universe_tickers(universe)
 
+    total = len(tickers)
+    logger.info("Starting Klarman screen: %d tickers, universe=%s, filter=%s", total, universe, filter_results)
+
+    if total == 0:
+        logger.warning("Universe '%s' returned 0 tickers — check network or fallback lists", universe)
+
     results: list[dict] = []
+    fetch_ok = 0
+    fetch_fail = 0
 
     iterator = tqdm(tickers, desc="Klarman screen") if show_progress else tickers
 
-    for ticker in iterator:
+    for idx, ticker in enumerate(iterator if show_progress else tickers):
         data = get_fundamentals(ticker)
         if not data:
+            fetch_fail += 1
+            if progress_callback:
+                progress_callback(idx + 1, total, ticker, "fail")
             continue
+
+        fetch_ok += 1
 
         ev_ebit = calculate_ev_ebit(data)
         fcf_yield = calculate_fcf_yield(data)
@@ -193,18 +212,24 @@ def run_klarman_screen(
         passes = passes_klarman_filters(data, ev_ebit, fcf_yield, ptb)
 
         if filter_results and not passes:
+            if progress_callback:
+                progress_callback(idx + 1, total, ticker, "filtered")
             continue
 
         # In filtered mode, require all three metrics for strict Klarman compliance.
         # In unfiltered ("show all") mode, allow partial scores so users can
         # see every stock ranked by whatever metrics are available.
         if filter_results and (ev_ebit is None or fcf_yield is None or ptb is None):
+            if progress_callback:
+                progress_callback(idx + 1, total, ticker, "filtered")
             continue
 
         score = score_candidate(ev_ebit, fcf_yield, ptb)
 
         # Skip only if we have zero calculable metrics
         if score is None:
+            if progress_callback:
+                progress_callback(idx + 1, total, ticker, "no_score")
             continue
 
         # Altman Z-Score (uses yfinance data only — fast enough for screening)
@@ -229,7 +254,20 @@ def run_klarman_screen(
             "passes_filter": passes,
         })
 
+        if progress_callback:
+            progress_callback(idx + 1, total, ticker, "scored")
+
+    logger.info(
+        "Screen complete: %d scored, %d fetched OK, %d fetch failures out of %d tickers",
+        len(results), fetch_ok, fetch_fail, total,
+    )
+
     if not results:
+        logger.warning(
+            "No results! fetch_ok=%d, fetch_fail=%d — if fetch_fail is high, "
+            "Yahoo Finance may be rate-limiting this server.",
+            fetch_ok, fetch_fail,
+        )
         return pd.DataFrame(columns=[
             "ticker", "name", "price", "market_cap", "ev_ebit",
             "fcf_yield_pct", "price_tangible_book", "net_debt_ebitda",

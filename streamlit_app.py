@@ -6,6 +6,13 @@ No FastAPI, no Docker, no CORS — just Python.
 """
 
 import os
+import logging
+
+# Configure logging so yfinance/screener diagnostics appear in Streamlit Cloud logs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
 
 import streamlit as st
 

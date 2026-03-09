@@ -193,4 +193,24 @@
 - [x] Update tests/test_screen.py (altman_z_score + altman_zone in required columns)
 - [x] All 414 tests passing
 
+## Phase 19 — Screener Data Fetch Reliability Fix (IN PROGRESS)
+
+### Problem
+- Screener returns 0 results on all universes, even with "Show all scores" enabled
+- Root cause: `get_fundamentals()` silently catches ALL exceptions (bare `except Exception: return None`)
+- On Streamlit Cloud, Yahoo Finance rate-limits or blocks requests from cloud server IPs
+- Every ticker fails silently → empty results → "No screener results yet"
+
+### Tasks
+- [x] Add retry logic with exponential backoff to yfinance data fetching (3 retries: 1s, 2s, 4s)
+- [x] Add `fast_info` fallback for price/market_cap when `.info` returns sparse data
+- [x] Add logging to `get_fundamentals()` so failures are visible in Streamlit Cloud logs
+- [x] Add progress bar + scored/failed counter to screener UI (real-time feedback)
+- [x] Relax `get_fundamentals()` to only require `price` (not `total_revenue`) — allows partial scoring
+- [x] Add `progress_callback` to `run_klarman_screen()` for UI integration
+- [x] Add diagnostic logging to `run_klarman_screen()` (fetch_ok/fetch_fail counts)
+- [x] Configure Python logging in `streamlit_app.py` for Streamlit Cloud log visibility
+- [x] Update todo.md
+- [ ] Commit and push
+
 ## Total: 414/414 tests passing ✅

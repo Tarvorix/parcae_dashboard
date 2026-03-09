@@ -5,9 +5,11 @@ screener_view.py.
 """
 
 import streamlit as st
+import logging
 from backend.screener.screen import run_klarman_screen
 from streamlit_ui.theme import COLORS, fmt_dollar
 
+logger = logging.getLogger(__name__)
 
 UNIVERSE_LABELS = {
     "S&P 500": "sp500",
@@ -16,6 +18,54 @@ UNIVERSE_LABELS = {
     "Russell 2000": "russell2000",
     "S&P 1500 (All)": "all",
 }
+
+
+def _run_screener_with_progress(top_n: int, universe: str, filter_results: bool) -> list[dict]:
+    """
+    Run the Klarman screen with a Streamlit progress bar for real-time feedback.
+    NOT cached — caching is handled at the caller level via session state staleness checks.
+    """
+    progress_bar = st.progress(0, text="Initializing screener…")
+    status_text = st.empty()
+
+    scored_count = [0]
+    fail_count = [0]
+
+    def on_progress(current, total, ticker, status):
+        pct = current / total if total > 0 else 0
+        progress_bar.progress(pct, text=f"Screening {current}/{total}: {ticker}")
+        if status == "scored":
+            scored_count[0] += 1
+        elif status == "fail":
+            fail_count[0] += 1
+        # Update status every 10 tickers to avoid too many rerenders
+        if current % 10 == 0 or current == total:
+            status_text.markdown(
+                f"<div style='font-size:0.7rem;color:{COLORS['gray_500']};'>"
+                f"Scored: {scored_count[0]} · Failed: {fail_count[0]} · Progress: {current}/{total}</div>",
+                unsafe_allow_html=True,
+            )
+
+    df = run_klarman_screen(
+        show_progress=False,
+        filter_results=filter_results,
+        universe=universe,
+        progress_callback=on_progress,
+    )
+
+    progress_bar.empty()
+
+    if df.empty:
+        status_text.markdown(
+            f"<div style='font-size:0.75rem;color:{COLORS['red']};'>"
+            f"Screener returned 0 results (fetched: {scored_count[0] + fail_count[0] - fail_count[0]}, "
+            f"failed: {fail_count[0]}). Yahoo Finance may be rate-limiting this server.</div>",
+            unsafe_allow_html=True,
+        )
+        return []
+
+    status_text.empty()
+    return df.head(top_n).to_dict(orient="records")
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -127,14 +177,11 @@ def render_sidebar():
         if refresh:
             _run_screener.clear()
             _run_screener_unfiltered.clear()
-            spinner_msg = f"Screening {universe_label}… (this takes a few minutes)"
-            with st.spinner(spinner_msg):
-                if show_all:
-                    st.session_state.watchlist_data = _run_screener_unfiltered(max_results, universe)
-                else:
-                    st.session_state.watchlist_data = _run_screener(max_results, universe)
-                st.session_state._last_universe = universe
-                st.session_state._last_show_all = show_all
+            st.session_state.watchlist_data = _run_screener_with_progress(
+                max_results, universe, filter_results=not show_all,
+            )
+            st.session_state._last_universe = universe
+            st.session_state._last_show_all = show_all
             # Clear selected ticker to show screener results on main screen
             st.session_state.selected_ticker = None
 
@@ -145,14 +192,11 @@ def render_sidebar():
             if universe != last_universe or show_all != last_show_all:
                 _run_screener.clear()
                 _run_screener_unfiltered.clear()
-                spinner_msg = f"Screening {universe_label}… (this takes a few minutes)"
-                with st.spinner(spinner_msg):
-                    if show_all:
-                        st.session_state.watchlist_data = _run_screener_unfiltered(max_results, universe)
-                    else:
-                        st.session_state.watchlist_data = _run_screener(max_results, universe)
-                    st.session_state._last_universe = universe
-                    st.session_state._last_show_all = show_all
+                st.session_state.watchlist_data = _run_screener_with_progress(
+                    max_results, universe, filter_results=not show_all,
+                )
+                st.session_state._last_universe = universe
+                st.session_state._last_show_all = show_all
 
         # Show result count
         watchlist = st.session_state.get("watchlist_data", [])
